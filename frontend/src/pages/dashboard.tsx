@@ -1,8 +1,8 @@
 import WeatherWidget from "../components/WeatherWidget";
+import StylistChat from "../components/StylistChat";
 import {
   CANVAS_ITEM_SIZE,
   CLOTHING_CATEGORY_OPTIONS,
-  PRESET_TAG_OPTIONS,
   STUDIO_SPARKLES,
   WARDROBE_CATEGORY_TABS,
   useDashboardPage,
@@ -73,6 +73,10 @@ export default function Dashboard() {
     handleAddItemFieldChange,
     handleImageSelection,
     handleToggleTagSelection,
+    tagOptions,
+    tagsLoading,
+    tagsError,
+    usingPresetTagSuggestions,
     addItemError,
     handleSubmitNewItem,
     showSaveDialog,
@@ -536,44 +540,47 @@ export default function Dashboard() {
             </div>
           )}
         </section>
-        <aside style={dashboardStyles.detailsSectionStyle}>
-          <h2 style={{ margin: "0 0 16px", fontSize: "1.1rem" }}>
-            Item Details
-          </h2>
-          {detailItem ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={dashboardStyles.detailPreviewWrapperStyle}>
-                {detailItem.image_url ? (
-                  <img
-                    src={detailItem.image_url}
-                    alt={detailItem.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      borderRadius: "20px",
-                    }}
-                  />
-                ) : (
-                  <div style={dashboardStyles.detailFallbackPreviewStyle}>
-                    <span>{detailItem.name.slice(0, 1).toUpperCase()}</span>
-                  </div>
-                )}
+        <aside style={dashboardStyles.sideColumnStyle}>
+          <div style={dashboardStyles.detailsSectionStyle}>
+            <h2 style={{ margin: "0 0 16px", fontSize: "1.1rem" }}>
+              Item Details
+            </h2>
+            {detailItem ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={dashboardStyles.detailPreviewWrapperStyle}>
+                  {detailItem.image_url ? (
+                    <img
+                      src={detailItem.image_url}
+                      alt={detailItem.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: "inherit",
+                      }}
+                    />
+                  ) : (
+                    <div style={dashboardStyles.detailFallbackPreviewStyle}>
+                      <span>{detailItem.name.slice(0, 1).toUpperCase()}</span>
+                    </div>
+                  )}
+                </div>
+                <h3 style={{ margin: "0", color: "#2f2f3a" }}>{detailItem.name}</h3>
+                <p style={dashboardStyles.detailMetaStyle}>
+                  Category: <strong>{detailItem.category}</strong>
+                </p>
+                <p style={dashboardStyles.detailMetaStyle}>
+                  Color: <strong>{detailItem.color ?? "N/A"}</strong>
+                </p>
+                <p style={dashboardStyles.detailMetaStyle}>
+                  Owner: <strong>{detailItem.user?.username ?? "You"}</strong>
+                </p>
               </div>
-              <h3 style={{ margin: "0", color: "#2f2f3a" }}>{detailItem.name}</h3>
-              <p style={dashboardStyles.detailMetaStyle}>
-                Category: <strong>{detailItem.category}</strong>
-              </p>
-              <p style={dashboardStyles.detailMetaStyle}>
-                Color: <strong>{detailItem.color ?? "N/A"}</strong>
-              </p>
-              <p style={dashboardStyles.detailMetaStyle}>
-                Owner: <strong>{detailItem.user?.username ?? "You"}</strong>
-              </p>
-            </div>
-          ) : (
-            <p style={dashboardStyles.infoTextStyle}>Select an item to view details.</p>
-          )}
+            ) : (
+              <p style={dashboardStyles.infoTextStyle}>Select an item to view details.</p>
+            )}
+          </div>
+          <StylistChat />
         </aside>
       </main>
 
@@ -703,43 +710,65 @@ export default function Dashboard() {
                   </span>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <span style={{ fontWeight: 600, color: "#5b5b66" }}>
-                  Tags
-                </span>
-                <div style={dashboardStyles.addItemTagGridStyle}>
-                  {PRESET_TAG_OPTIONS.map((tag) => {
-                    const selected = addItemForm.tags.includes(tag.value);
-                    return (
-                      <button
-                        key={tag.value}
-                        type="button"
-                        onClick={() => handleToggleTagSelection(tag.value)}
-                        style={{
-                          ...dashboardStyles.addItemTagOptionStyle,
-                          background: selected
-                            ? "rgba(236,64,122,0.18)"
-                            : dashboardStyles.addItemTagOptionStyle.background,
-                          border: selected
-                            ? "1px solid rgba(236,64,122,0.35)"
-                            : dashboardStyles.addItemTagOptionStyle.border,
-                          color: selected ? "#d81b60" : "#322f3d",
-                        }}
-                        disabled={addItemSubmitting}
-                        aria-pressed={selected}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          readOnly
-                          aria-hidden="true"
-                        />
-                        {tag.label}
-                      </button>
-                    );
-                  })}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <span style={{ fontWeight: 600, color: "#5b5b66" }}>
+                    Tags
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {tagsLoading && (
+                      <span style={{ fontSize: "0.85rem", color: "#7a7a85" }}>
+                        Loading your saved tags...
+                      </span>
+                    )}
+                    {tagsError && (
+                      <span style={{ fontSize: "0.85rem", color: "#c62828" }}>
+                        {tagsError}. Showing quick suggestions instead.
+                      </span>
+                    )}
+                    {usingPresetTagSuggestions && !tagsLoading && !tagsError && (
+                      <span style={{ fontSize: "0.85rem", color: "#7a7a85" }}>
+                        Pick from our favorite starters or add new tags when saving an item.
+                      </span>
+                    )}
+                  </div>
+                  <div style={dashboardStyles.addItemTagGridStyle}>
+                    {tagOptions.map((tag) => {
+                      const selected = addItemForm.tags.includes(tag.value);
+                      return (
+                        <button
+                          key={tag.value}
+                          type="button"
+                          onClick={() => handleToggleTagSelection(tag.value)}
+                          style={{
+                            ...dashboardStyles.addItemTagOptionStyle,
+                            background: selected
+                              ? "rgba(236,64,122,0.18)"
+                              : dashboardStyles.addItemTagOptionStyle.background,
+                            border: selected
+                              ? "1px solid rgba(236,64,122,0.35)"
+                              : dashboardStyles.addItemTagOptionStyle.border,
+                            color: selected ? "#d81b60" : "#322f3d",
+                          }}
+                          disabled={addItemSubmitting}
+                          aria-pressed={selected}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            readOnly
+                            aria-hidden="true"
+                          />
+                          {tag.icon && (
+                            <span aria-hidden="true" style={{ marginRight: 6 }}>
+                              {tag.icon}
+                            </span>
+                          )}
+                          {tag.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
               {addItemError && (
                 <div style={{ color: "#c62828", fontSize: "0.85rem" }}>
                   {addItemError}

@@ -165,6 +165,131 @@ export const statValueStyle: CSSProperties = {
   color: "#d81b60",
 };
 
+export const preferenceSectionStyle: CSSProperties = {
+  marginBottom: "36px",
+};
+
+export const preferenceGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "18px",
+};
+
+export const preferenceCardStyle: CSSProperties = {
+  background: "rgba(255,255,255,0.92)",
+  borderRadius: "22px",
+  padding: "20px",
+  border: "1px solid rgba(236,64,122,0.15)",
+  boxShadow: "0 18px 40px rgba(31,24,53,0.08)",
+  minHeight: "160px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+};
+
+export const preferenceLabelStyle: CSSProperties = {
+  fontSize: "0.85rem",
+  color: "#6b6879",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+export const colorChipRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "10px",
+};
+
+export const colorChipStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "6px 12px",
+  borderRadius: "999px",
+  background: "rgba(236,64,122,0.08)",
+  fontWeight: 600,
+  fontSize: "0.9rem",
+};
+
+export const colorSwatchStyle: CSSProperties = {
+  width: "16px",
+  height: "16px",
+  borderRadius: "50%",
+  border: "2px solid rgba(255,255,255,0.8)",
+  boxShadow: "0 0 6px rgba(0,0,0,0.15)",
+};
+
+export const preferenceMutedText: CSSProperties = {
+  color: "#8b8698",
+  fontSize: "0.9rem",
+};
+
+export const mostWornBodyStyle: CSSProperties = {
+  display: "flex",
+  gap: "16px",
+  alignItems: "center",
+};
+
+export const mostWornImageShellStyle: CSSProperties = {
+  width: "80px",
+  height: "80px",
+  borderRadius: "18px",
+  background: "rgba(236,64,122,0.12)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+};
+
+export const mostWornImageStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+export const mostWornFallbackStyle: CSSProperties = {
+  fontSize: "1.4rem",
+  color: "#d81b60",
+  fontWeight: 700,
+};
+
+export const preferenceValueStyle: CSSProperties = {
+  fontSize: "1.15rem",
+  fontWeight: 600,
+  margin: 0,
+};
+
+export const preferenceMetaStyle: CSSProperties = {
+  margin: "4px 0",
+  fontSize: "0.9rem",
+  color: "#6b6879",
+};
+
+export const preferenceHighlightValue: CSSProperties = {
+  fontSize: "1.1rem",
+  color: "#d81b60",
+};
+
+export const preferenceTagListStyle: CSSProperties = {
+  listStyle: "none",
+  padding: 0,
+  margin: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+export const preferenceTagListItemStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "8px 10px",
+  borderRadius: "14px",
+  background: "rgba(50, 47, 60, 0.05)",
+  fontWeight: 600,
+  textTransform: "capitalize",
+};
+
 export const loadingStateStyle: CSSProperties = {
   textAlign: "center",
   color: "#5b5b66",

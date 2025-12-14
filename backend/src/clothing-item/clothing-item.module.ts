@@ -36,12 +36,11 @@ import { ClothingItem } from './clothing-item.entity';
 import { ClothingItemTag } from '../clothing-item-tag/clothing-item-tag.entity';
 import { Tag } from '../tag/tag.entity';
 import { ClothingItemService } from './clothing-item.service';
-import { ClothingItemController } from './clothing-item.controller';
+import { ClothingItemResolver } from './clothing-item.resolver';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ClothingItem, ClothingItemTag, Tag])],
-  controllers: [ClothingItemController],
-  providers: [ClothingItemService],
+  providers: [ClothingItemService, ClothingItemResolver],
   exports: [ClothingItemService],
 })
 export class ClothingItemModule {}

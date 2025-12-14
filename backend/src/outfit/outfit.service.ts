@@ -8,16 +8,15 @@
  * and the database repository, ensuring proper validation, query handling,
  * and structured data responses.
  */
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Outfit } from './outfit.entity';
-import { CreateOutfitDto } from './dto/create-outfit.dto';
-import { UpdateOutfitDto } from './dto/update-outfit.dto';
+import { CreateOutfitInput } from './dto/create-outfit.dto';
+import { UpdateOutfitInput } from './dto/update-outfit.dto';
+import { OutfitPayload } from './outfit.types';
+import { BasicUserSummary } from '../clothing-item/clothing-item.types';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class OutfitService {
@@ -38,8 +37,9 @@ export class OutfitService {
    *
    * @returns List of all outfits with their associated users.
    */
-  async getAll() {
-    return this.repo.find({ relations: ['user'] });
+  async getAll(): Promise<OutfitPayload[]> {
+    const outfits = await this.repo.find({ relations: ['user'] });
+    return outfits.map((o) => this.mapPayload(o));
   }
 
   // ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ export class OutfitService {
    * - Returns a structured list containing metadata such as `like_count`,
    *   `comment_count`, and `liked_by_viewer`.
    */
-  async getPublicFeed(search?: string, viewerId?: number) {
+  async getPublicFeed(search?: string, viewerId?: number): Promise<OutfitPayload[]> {
     const qb = this.repo
       .createQueryBuilder('outfit')
       .leftJoinAndSelect('outfit.user', 'user')
@@ -93,20 +93,13 @@ export class OutfitService {
 
     const outfits = await qb.getMany();
 
-    return outfits.map((outfit) => {
-      const {
-        likeCount = 0,
-        commentCount = 0,
-        viewerLikeCount = 0,
-        ...plain
-      } = outfit as any;
-
-      return {
-        ...plain,
-        like_count: likeCount ?? 0,
-        comment_count: commentCount ?? 0,
-        liked_by_viewer: viewerLikeCount > 0,
-      };
+    return outfits.map((outfit: any) => {
+      const { likeCount = 0, commentCount = 0, viewerLikeCount = 0 } = outfit;
+      const payload = this.mapPayload(outfit);
+      payload.like_count = likeCount ?? 0;
+      payload.comment_count = commentCount ?? 0;
+      payload.liked_by_viewer = viewerLikeCount > 0;
+      return payload;
     });
   }
 
@@ -126,13 +119,13 @@ export class OutfitService {
    * Postconditions:
    * - Throws `NotFoundException` if no outfit exists for this ID.
    */
-  async getById(id: number) {
+  async getById(id: number): Promise<OutfitPayload> {
     const outfit = await this.repo.findOne({
       where: { outfit_id: id },
       relations: ['user'],
     });
     if (!outfit) throw new NotFoundException('Outfit not found.');
-    return outfit;
+    return this.mapPayload(outfit);
   }
 
   // ---------------------------------------------------------------------------
@@ -148,14 +141,12 @@ export class OutfitService {
    * Postconditions:
    * - Throws `NotFoundException` if the user has no outfits.
    */
-  async getByUser(user_id: number) {
+  async getByUser(user_id: number): Promise<OutfitPayload[]> {
     const outfits = await this.repo.find({
       where: { user: { user_id } },
       relations: ['user'],
     });
-    if (outfits.length === 0)
-      throw new NotFoundException('No outfits found for this user.');
-    return outfits;
+    return outfits.map((o) => this.mapPayload(o));
   }
 
   // ---------------------------------------------------------------------------
@@ -174,7 +165,7 @@ export class OutfitService {
    * Postconditions:
    * - A new outfit record is saved in the database.
    */
-  async create(dto: CreateOutfitDto) {
+  async create(dto: CreateOutfitInput): Promise<{ message: string; outfit: OutfitPayload }> {
     const { name, is_public, cover_image_url, user_id } = dto;
 
     if (!user_id)
@@ -190,7 +181,7 @@ export class OutfitService {
     const saved = await this.repo.save(outfit);
     return {
       message: 'Outfit created successfully',
-      outfit: saved,
+      outfit: this.mapPayload(saved),
     };
   }
 
@@ -212,7 +203,7 @@ export class OutfitService {
    * - Outfit details are updated in the database.
    * - Throws `NotFoundException` if no outfit is found.
    */
-  async update(id: number, updates: UpdateOutfitDto) {
+  async update(id: number, updates: UpdateOutfitInput): Promise<{ message: string; outfit: OutfitPayload }> {
     const outfit = await this.repo.findOne({ where: { outfit_id: id } });
     if (!outfit) throw new NotFoundException('Outfit not found.');
 
@@ -221,7 +212,7 @@ export class OutfitService {
 
     return {
       message: 'Outfit updated successfully',
-      outfit: updated,
+      outfit: this.mapPayload(updated),
     };
   }
 
@@ -242,9 +233,31 @@ export class OutfitService {
    * - The outfit and its related records are removed (due to cascade).
    * - Throws `NotFoundException` if the outfit does not exist.
    */
-  async delete(id: number) {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (result.affected === 0) throw new NotFoundException('Outfit not found.');
     return { message: 'Outfit deleted successfully' };
+  }
+
+  private mapPayload(outfit: Outfit): OutfitPayload {
+    const userSummary: BasicUserSummary | undefined = outfit.user
+      ? {
+          user_id: outfit.user.user_id,
+          username: outfit.user.username,
+          email: outfit.user.email,
+          profile_image_url: outfit.user.profile_image_url,
+        }
+      : undefined;
+
+    return {
+      outfit_id: outfit.outfit_id,
+      name: outfit.name,
+      is_public: outfit.is_public,
+      cover_image_url: outfit.cover_image_url,
+      user_id: outfit.user_id,
+      user: userSummary,
+      created_at: outfit.created_at,
+      updated_at: outfit.updated_at,
+    };
   }
 }

@@ -10,28 +10,30 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./useAuth";
 import { useClothingItems } from "./useClothingItems";
+import { useAppDispatch } from "./useAppDispatch";
+import { useAppSelector } from "./useAppSelector";
 import {
-  createClothingItem,
-  type ClothingItemRecord,
-} from "../services/clothingItemService";
-import { createOutfit, getOutfit, updateOutfit } from "../services/outfitService";
-import apiClient from "../services/apiClient";
+  createClothingItemThunk,
+} from "../store/clothingItems/clothingItemsSlice";
 import {
-  createOutfitItem,
-  deleteOutfitItem,
-  getOutfitItemsByOutfit,
-  type CreateOutfitItemResponse,
-  type OutfitItem,
-} from "../services/outfitItemService";
-import { createScheduledOutfit } from "../services/scheduledOutfitService";
+  createOutfitThunk,
+  fetchOutfitThunk,
+  updateOutfitThunk,
+} from "../store/outfits/outfitsSlice";
 import {
-  getCreatorLikesInbox,
-  type LikeRecord,
-} from "../services/likeService";
+  createOutfitItemThunk,
+  deleteOutfitItemThunk,
+  fetchOutfitItemsByOutfitThunk,
+  fetchOutfitItemsThunk,
+} from "../store/outfitItems/outfitItemsSlice";
+import { createScheduledOutfitThunk } from "../store/scheduledOutfits/scheduledOutfitsSlice";
+import { fetchLikesForCreatorThunk } from "../store/likes/likesSlice";
+import { fetchTagsThunk } from "../store/tags/tagsSlice";
+import type { ClothingItem, OutfitItem, Like } from "../types/models";
 
 interface CanvasItem {
   instanceId: string;
-  item: ClothingItemRecord;
+  item: ClothingItem;
   x: number;
   y: number;
   z: number;
@@ -69,23 +71,23 @@ interface RotateState {
 }
 
 const CANVAS_WIDTH = 520;
-const CANVAS_HEIGHT = 520;
+const CANVAS_HEIGHT = 640;
 /** Default pixel size used when placing wardrobe tiles onto the canvas. */
 export const CANVAS_ITEM_SIZE = 120;
 const MIN_CANVAS_SCALE = 0.6;
 const MAX_CANVAS_SCALE = 2.4;
 /** Predefined tag suggestions shown in the add-item dialog. */
-export const PRESET_TAG_OPTIONS = [
-  { label: "Summer", value: "summer" },
-  { label: "Winter", value: "winter" },
-  { label: "Spring", value: "spring" },
-  { label: "Autumn", value: "autumn" },
-  { label: "Rainy", value: "rainy" },
-  { label: "Cold", value: "cold" },
-  { label: "Warm", value: "warm" },
-  { label: "Layered", value: "layered" },
-  { label: "Lightweight", value: "lightweight" },
-] as const;
+export const PRESET_TAG_OPTIONS: Array<{ label: string; value: string; icon?: string }> = [
+  { label: "Summer", value: "summer", icon: "☀️" },
+  { label: "Winter", value: "winter", icon: "❄️" },
+  { label: "Spring", value: "spring", icon: "🌸" },
+  { label: "Autumn", value: "autumn", icon: "🍂" },
+  { label: "Rainy", value: "rainy", icon: "🌧️" },
+  { label: "Cold", value: "cold", icon: "🧥" },
+  { label: "Warm", value: "warm", icon: "🔥" },
+  { label: "Layered", value: "layered", icon: "🧣" },
+  { label: "Lightweight", value: "lightweight", icon: "🪶" },
+];
 
 export const CLOTHING_CATEGORY_OPTIONS = [
   { value: "shirts", label: "Shirts & Tops", icon: "👚" },
@@ -143,8 +145,12 @@ export function useDashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const userId = user?.id ?? null;
+  const userId = user?.user_id ?? null;
   const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
+  const dispatch = useAppDispatch();
+  const { data: savedTags, status: tagsStatus, error: tagsError } = useAppSelector(
+    (state) => state.tags
+  );
 
   useEffect(() => {
     if (!userId) {
@@ -160,7 +166,7 @@ export function useDashboardPage() {
     userId: userId ?? undefined,
     mode: userId ? "user" : "all",
   });
-  const [studioLikes, setStudioLikes] = useState<LikeRecord[]>([]);
+  const [studioLikes, setStudioLikes] = useState<Like[]>([]);
   const [showLikeNotification, setShowLikeNotification] = useState(true);
   const [lastSeenLikeCount, setLastSeenLikeCount] = useState(() => {
     if (typeof window === "undefined") {
@@ -182,26 +188,30 @@ export function useDashboardPage() {
   });
 
   useEffect(() => {
+    if (!userId || tagsStatus !== "idle") {
+      return;
+    }
+    dispatch(fetchTagsThunk()).catch(() => undefined);
+  }, [dispatch, tagsStatus, userId]);
+
+  useEffect(() => {
     if (!userId) {
       setStudioLikes([]);
       return;
     }
     let isMounted = true;
-    getCreatorLikesInbox(userId)
+    dispatch(fetchLikesForCreatorThunk(userId))
+      .unwrap()
       .then((records) => {
-        if (isMounted) {
-          setStudioLikes(records);
-        }
+        if (isMounted) setStudioLikes(records as any);
       })
       .catch(() => {
-        if (isMounted) {
-          setStudioLikes([]);
-        }
+        if (isMounted) setStudioLikes([]);
       });
     return () => {
       isMounted = false;
     };
-  }, [userId]);
+  }, [dispatch, userId]);
 
   const resolveImageUrl = useCallback((imageUrl?: string | null) => {
     if (!imageUrl || imageUrl.trim().length === 0) {
@@ -210,23 +220,18 @@ export function useDashboardPage() {
     if (/^https?:\/\//i.test(imageUrl)) {
       return imageUrl;
     }
-    try {
-      const baseUrl = apiClient.defaults.baseURL ?? window.location.origin;
-      return new URL(imageUrl, baseUrl).toString();
-    } catch {
-      return imageUrl;
-    }
+    return new URL(imageUrl, window.location.origin).toString();
   }, []);
 
   const wardrobeItemLookup = useMemo(() => {
-    const lookup = new Map<number, ClothingItemRecord>();
+    const lookup = new Map<number, ClothingItem>();
     items.forEach((item) => {
       lookup.set(item.item_id, item);
     });
     return lookup;
   }, [items]);
 
-  const [selectedItem, setSelectedItem] = useState<ClothingItemRecord | null>(
+  const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(
     null
   );
   const [canvasItems, setCanvasItems] = useState<CanvasItem[]>([]);
@@ -251,9 +256,9 @@ const [saveDialogError, setSaveDialogError] = useState<string | null>(null);
   const [rotateState, setRotateState] = useState<RotateState | null>(null);
   const [addItemSubmitting, setAddItemSubmitting] = useState(false);
 const [addItemError, setAddItemError] = useState<string | null>(null);
-const [addItemForm, setAddItemForm] = useState<{
-  name: string;
-  category: string;
+  const [addItemForm, setAddItemForm] = useState<{
+    name: string;
+    category: string;
     color: string;
     imageData: string | null;
     tags: string[];
@@ -267,6 +272,33 @@ const [addItemForm, setAddItemForm] = useState<{
     previewUrl: null,
   });
   const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  const tagOptions = useMemo(() => {
+    const optionMap = new Map<string, { label: string; value: string; icon?: string }>();
+
+    for (const preset of PRESET_TAG_OPTIONS) {
+      optionMap.set(preset.value.toLowerCase(), preset);
+    }
+
+    savedTags
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((tag) => {
+        const normalized = tag.name.trim().toLowerCase();
+        if (!normalized) {
+          return;
+        }
+        optionMap.set(normalized, {
+          label: tag.name,
+          value: normalized,
+          icon: "🏷️",
+        });
+      });
+
+    return Array.from(optionMap.values());
+  }, [savedTags]);
+
+  const usingPresetTagSuggestions = savedTags.length === 0;
 
   useEffect(() => {
     if (items.length && !selectedItem) {
@@ -446,15 +478,21 @@ const [addItemForm, setAddItemForm] = useState<{
     setAddItemError(null);
 
     try {
-      await createClothingItem({
-        name,
-        category,
-        color,
-        image_url: imageData,
-        user_id: userId,
-        tag_names: tags,
-      });
-      await refetch();
+      await dispatch(
+        createClothingItemThunk({
+          name,
+          category,
+          color,
+          image_url: imageData,
+          user_id: userId,
+          tag_names: tags,
+        })
+      ).unwrap();
+      try {
+        await refetch();
+      } catch (refreshError) {
+        console.error("Failed to refresh wardrobe after create:", refreshError);
+      }
       setStatusMessage("New wardrobe item added successfully!");
       setShowAddItemDialog(false);
       resetAddItemForm();
@@ -465,10 +503,10 @@ const [addItemForm, setAddItemForm] = useState<{
     } finally {
       setAddItemSubmitting(false);
     }
-  }, [addItemForm, refetch, resetAddItemForm, setStatusMessage, userId]);
+  }, [addItemForm, dispatch, refetch, resetAddItemForm, setStatusMessage, userId]);
 
   const handleDragStart = useCallback(
-    (item: ClothingItemRecord) => (event: DragEvent<HTMLDivElement>) => {
+    (item: ClothingItem) => (event: DragEvent<HTMLDivElement>) => {
       event.dataTransfer.setData(
         "application/json",
         JSON.stringify(item.item_id)
@@ -483,7 +521,7 @@ const [addItemForm, setAddItemForm] = useState<{
   };
 
   const addItemToCanvas = useCallback(
-    (item: ClothingItemRecord, clientX: number, clientY: number) => {
+    (item: ClothingItem, clientX: number, clientY: number) => {
       const canvas = canvasRef.current;
       if (!canvas) {
         return;
@@ -762,7 +800,14 @@ const [addItemForm, setAddItemForm] = useState<{
       const fallbackImageUrl =
         resolveImageUrl(clothing?.image_url ?? undefined) ?? undefined;
 
-      const normalized: ClothingItemRecord = wardrobeItem
+      if (!wardrobeItem) {
+        console.warn("Wardrobe lookup failed for outfit item", {
+          outfitItem,
+          resolvedItemId,
+        });
+      }
+
+      const normalized: ClothingItem = wardrobeItem
         ? {
             ...wardrobeItem,
             image_url: wardrobeItem.image_url ?? fallbackImageUrl ?? undefined,
@@ -771,9 +816,13 @@ const [addItemForm, setAddItemForm] = useState<{
             item_id: resolvedItemId,
             name: clothing?.name ?? `Item ${index + 1}`,
             category: clothing?.category ?? "other",
+            user_id:
+              (clothing as { user_id?: number })?.user_id ??
+              (clothing as { user?: { user_id?: number } })?.user?.user_id ??
+              userId ??
+              resolvedItemId,
             color: clothing?.color ?? undefined,
             image_url: fallbackImageUrl ?? undefined,
-            description: undefined,
             uploaded_at: (clothing as { uploaded_at?: string })?.uploaded_at ?? undefined,
             updated_at: (clothing as { updated_at?: string })?.updated_at ?? undefined,
             user:
@@ -795,13 +844,37 @@ const [addItemForm, setAddItemForm] = useState<{
                     email: user?.email,
                   }
                 : undefined,
-            tags: [],
+            tags: (clothing as { tags?: ClothingItem["tags"] })?.tags ?? [],
+            tag_names: undefined,
+            tag_ids: undefined,
           };
 
-      const transform = (outfitItem.transform ?? {}) as {
-        scale?: unknown;
-        rotation?: unknown;
-      };
+      if (!normalized.image_url) {
+        console.warn("Missing image_url for outfit item", {
+          outfitItemId: outfitItem.outfit_item_id,
+          resolvedItemId,
+          fallbackImageUrl,
+          normalized,
+        });
+      }
+
+    const transformValue = outfitItem.transform;
+    const transformObject: Record<string, unknown> = (() => {
+      if (!transformValue) {
+        return {};
+      }
+      if (typeof transformValue === "string") {
+        try {
+          return JSON.parse(transformValue);
+        } catch {
+          return {};
+        }
+      }
+      if (typeof transformValue === "object") {
+        return transformValue as Record<string, unknown>;
+      }
+      return {};
+    })();
 
       const resolveNumber = (value: unknown, fallback: number) => {
         if (typeof value === "number" && Number.isFinite(value)) {
@@ -816,8 +889,8 @@ const [addItemForm, setAddItemForm] = useState<{
         return fallback;
       };
 
-      const scale = resolveNumber(transform.scale, 1);
-      const rotation = resolveNumber(transform.rotation, 0);
+      const scale = resolveNumber(transformObject.scale, 1);
+      const rotation = resolveNumber(transformObject.rotation, 0);
       const itemSize = CANVAS_ITEM_SIZE * scale;
       const defaultX = (CANVAS_WIDTH - itemSize) / 2;
       const defaultY = (CANVAS_HEIGHT - itemSize) / 2;
@@ -849,25 +922,35 @@ const [addItemForm, setAddItemForm] = useState<{
   );
 
   const persistOutfitItems = useCallback(
-    async (outfitId: number): Promise<CreateOutfitItemResponse[]> => {
-      const results = await Promise.all(
+    async (outfitId: number) => {
+      const results = await Promise.allSettled(
         canvasItems.map((canvasItem, index) =>
-          createOutfitItem({
-            outfit_id: outfitId,
-            item_id: canvasItem.item.item_id,
-            x_position: Math.round(canvasItem.x),
-            y_position: Math.round(canvasItem.y),
-            z_index: index + 1,
-            transform: {
-              scale: Number(canvasItem.scale.toFixed(4)),
-              rotation: Number(canvasItem.rotation.toFixed(2)),
-            },
-          })
+          dispatch(
+            createOutfitItemThunk({
+              outfit_id: outfitId,
+              item_id: canvasItem.item.item_id,
+              x_position: Math.round(canvasItem.x),
+              y_position: Math.round(canvasItem.y),
+              z_index: index + 1,
+              transform: JSON.stringify({
+                scale: Number(canvasItem.scale.toFixed(4)),
+                rotation: Number(canvasItem.rotation.toFixed(2)),
+              }),
+            })
+          ).unwrap()
         )
       );
-      return results;
+
+      const failed = results.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      failed.forEach((failure) => {
+        console.error("Failed to persist outfit item:", failure.reason);
+      });
+
+      return { failedCount: failed.length, total: results.length };
     },
-    [canvasItems]
+    [canvasItems, dispatch]
   );
 
   useEffect(() => {
@@ -891,10 +974,28 @@ const [addItemForm, setAddItemForm] = useState<{
 
     const load = async () => {
       try {
-        const [outfitDetails, outfitItems] = await Promise.all([
-          getOutfit(parsedOutfitId),
-          getOutfitItemsByOutfit(parsedOutfitId),
-        ]);
+      const outfitDetails = await dispatch(fetchOutfitThunk(parsedOutfitId)).unwrap();
+      let outfitItems = await dispatch(fetchOutfitItemsByOutfitThunk(parsedOutfitId)).unwrap();
+
+      if (!outfitItems.length) {
+        const fallbackItems = await dispatch(fetchOutfitItemsThunk()).unwrap();
+        outfitItems = fallbackItems.filter((item) => item.outfit_id === parsedOutfitId);
+        if (outfitItems.length) {
+          console.warn(
+            "Outfit items were missing from the dedicated query; using global cache fallback.",
+            {
+              outfitId: parsedOutfitId,
+              fallbackCount: outfitItems.length,
+            }
+          );
+        }
+      }
+
+        console.log("Outfit edit payload:", {
+          outfitId: parsedOutfitId,
+          outfitDetails,
+          outfitItems,
+        });
 
         const sortedItems = [...outfitItems].sort(
           (a, b) => (a.z_index ?? 0) - (b.z_index ?? 0)
@@ -902,6 +1003,7 @@ const [addItemForm, setAddItemForm] = useState<{
         const mappedCanvasItems = sortedItems.map((item, index) =>
           buildCanvasItemFromOutfitItem(item, index)
         );
+        console.log("Mapped canvas items:", mappedCanvasItems);
 
         setCanvasItems(mappedCanvasItems);
         setActiveCanvasItemId(
@@ -915,10 +1017,10 @@ const [addItemForm, setAddItemForm] = useState<{
           originalItemIds: sortedItems
             .map((item) => item.outfit_item_id)
             .filter((id): id is number => typeof id === "number"),
-          name: outfitDetails.name ?? outfitDetails.title ?? null,
+          name: outfitDetails.name ?? null,
           isPublic: Boolean(outfitDetails.is_public),
         });
-        setSaveFormName(outfitDetails.name ?? outfitDetails.title ?? "");
+        setSaveFormName(outfitDetails.name ?? "");
         setSaveFormIsPublic(Boolean(outfitDetails.is_public));
         setSaveFormScheduleDate("");
         resetStatus();
@@ -1039,17 +1141,20 @@ const [addItemForm, setAddItemForm] = useState<{
         if (!targetOutfitId) {
           throw new Error("Unable to determine outfit being edited.");
         }
-        await updateOutfit(targetOutfitId, {
-          name: trimmedName,
-          is_public: saveFormIsPublic,
-          cover_image_url: coverImageUrl ?? undefined,
-        });
+        await dispatch(
+          updateOutfitThunk({
+            outfit_id: targetOutfitId,
+            name: trimmedName,
+            is_public: saveFormIsPublic,
+            cover_image_url: coverImageUrl ?? undefined,
+          })
+        ).unwrap();
 
         if (editingContext?.originalItemIds.length) {
           await Promise.all(
             editingContext.originalItemIds.map(async (outfitItemId) => {
               try {
-                await deleteOutfitItem(outfitItemId);
+                await dispatch(deleteOutfitItemThunk(outfitItemId)).unwrap();
               } catch (deleteError) {
                 const status = (deleteError as {
                   response?: { status?: number };
@@ -1062,13 +1167,15 @@ const [addItemForm, setAddItemForm] = useState<{
           );
         }
       } else {
-        const response = await createOutfit({
-          name: trimmedName,
-          user_id: userId,
-          is_public: saveFormIsPublic,
-          cover_image_url: coverImageUrl ?? undefined,
-        });
-        targetOutfitId = response.outfit?.outfit_id ?? null;
+        const response = await dispatch(
+          createOutfitThunk({
+            name: trimmedName,
+            user_id: userId,
+            is_public: saveFormIsPublic,
+            cover_image_url: coverImageUrl ?? undefined,
+          })
+        ).unwrap();
+        targetOutfitId = response.outfit_id ?? null;
         if (!targetOutfitId) {
           throw new Error("Unable to determine outfit id from response.");
         }
@@ -1078,18 +1185,24 @@ const [addItemForm, setAddItemForm] = useState<{
         throw new Error("Unable to resolve outfit id.");
       }
 
-      await persistOutfitItems(targetOutfitId);
+      const persistResult = await persistOutfitItems(targetOutfitId);
+      const outfitItemsWarning =
+        persistResult.failedCount > 0
+          ? `We saved your outfit, but ${persistResult.failedCount} of ${persistResult.total} wardrobe items failed to attach. Try editing the outfit to re-place them.`
+          : null;
 
       let scheduleFailed = false;
       let scheduleSuccessNote: string | null = null;
 
       if (trimmedScheduleDate) {
         try {
-          await createScheduledOutfit({
-            outfit_id: targetOutfitId,
-            user_id: userId,
-            schedule_date: trimmedScheduleDate,
-          });
+          await dispatch(
+            createScheduledOutfitThunk({
+              outfit_id: targetOutfitId,
+              user_id: userId,
+              schedule_date: trimmedScheduleDate,
+            })
+          ).unwrap();
           const prettyDate = new Date(`${trimmedScheduleDate}T00:00:00`);
           scheduleSuccessNote = `Scheduled for ${prettyDate.toLocaleDateString(undefined, {
             month: "short",
@@ -1102,37 +1215,38 @@ const [addItemForm, setAddItemForm] = useState<{
         }
       }
 
+      const combinedWarningMessages: string[] = [];
+      if (scheduleFailed) {
+        combinedWarningMessages.push(
+          "We saved your outfit, but scheduling it failed. Try again from your profile calendar."
+        );
+      }
+      if (outfitItemsWarning) {
+        combinedWarningMessages.push(outfitItemsWarning);
+      }
+
       if (isEditing) {
         setStatusMessage(
           scheduleSuccessNote
             ? `Outfit updated successfully! ${scheduleSuccessNote}.`
             : "Outfit updated successfully!"
         );
-        if (scheduleFailed) {
-          setStatusError(
-            "We updated your outfit, but scheduling it failed. Try again from your profile calendar."
-          );
-        } else {
-          setStatusError(null);
-        }
+        setStatusError(
+          combinedWarningMessages.length ? combinedWarningMessages.join(" ") : null
+        );
         setCanvasItems([]);
         setActiveCanvasItemId(null);
         setSelectedItem(null);
         setEditingContext(null);
       } else {
-        if (scheduleFailed) {
-          setStatusMessage("Outfit saved successfully!");
-          setStatusError(
-            "We saved your outfit, but scheduling it failed. Try again from your profile calendar."
-          );
-        } else {
-          setStatusMessage(
-            scheduleSuccessNote
-              ? `Outfit saved successfully! ${scheduleSuccessNote}.`
-              : "Outfit saved successfully!"
-          );
-          setStatusError(null);
-        }
+        setStatusMessage(
+          scheduleSuccessNote
+            ? `Outfit saved successfully! ${scheduleSuccessNote}.`
+            : "Outfit saved successfully!"
+        );
+        setStatusError(
+          combinedWarningMessages.length ? combinedWarningMessages.join(" ") : null
+        );
         setCanvasItems([]);
         setActiveCanvasItemId(null);
         setSelectedItem(null);
@@ -1153,6 +1267,7 @@ const [addItemForm, setAddItemForm] = useState<{
       setSavingOutfit(false);
     }
   }, [
+    dispatch,
     editingContext,
     persistOutfitItems,
     resetStatus,
@@ -1301,6 +1416,10 @@ const [addItemForm, setAddItemForm] = useState<{
     handleAddItemFieldChange,
     handleImageSelection,
     handleToggleTagSelection,
+    tagOptions,
+    tagsLoading: tagsStatus === "loading",
+    tagsError,
+    usingPresetTagSuggestions,
     addItemError,
     handleSubmitNewItem,
     showSaveDialog,

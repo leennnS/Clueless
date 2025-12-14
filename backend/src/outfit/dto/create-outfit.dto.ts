@@ -1,5 +1,5 @@
 /**
- * 👗 Data Transfer Object: CreateOutfitDto
+ * 👗 GraphQL Input: CreateOutfitInput
  *
  * Defines the structure and validation rules for creating a new outfit.
  * This DTO ensures that the incoming request body meets the expected
@@ -27,13 +27,8 @@
  * - Validated DTO object is passed to the service for persistence.
  */
 
-import {
-  IsBoolean,
-  IsInt,
-  IsOptional,
-  IsString,
-  Matches,
-} from 'class-validator';
+import { Field, InputType, Int } from '@nestjs/graphql';
+import { IsBoolean, IsInt, IsOptional, IsString, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -48,13 +43,15 @@ import { Type } from 'class-transformer';
 const COVER_IMAGE_REGEX =
   /^(https?:\/\/.+|data:image\/(?:png|jpe?g);base64,[a-z0-9+/=]+)$/i;
 
-export class CreateOutfitDto {
+@InputType()
+export class CreateOutfitInput {
   /**
    * Optional name or label of the outfit (e.g. "Summer Vibes").
    *
    * @example "Cozy Winter Layers"
    * @optional
    */
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   name?: string;
@@ -67,6 +64,7 @@ export class CreateOutfitDto {
    * @default false
    * @optional
    */
+  @Field({ nullable: true })
   @IsOptional()
   @IsBoolean()
   is_public?: boolean;
@@ -79,12 +77,13 @@ export class CreateOutfitDto {
    * @example "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgA..."
    * @optional
    */
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @Matches(COVER_IMAGE_REGEX, {
     message: 'cover_image_url must be an http(s) URL or base64 data URI',
   })
-  cover_image_url?: string | null;
+  cover_image_url?: string;
 
   /**
    * Numeric identifier of the user who owns or creates the outfit.
@@ -92,6 +91,7 @@ export class CreateOutfitDto {
    * @example 42
    * @optional
    */
+  @Field(() => Int, { nullable: true })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

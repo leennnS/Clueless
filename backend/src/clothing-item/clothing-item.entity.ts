@@ -30,22 +30,25 @@
  * - When a user is deleted, all their clothing items are automatically removed (`CASCADE`).
  */
 
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
-  JoinColumn,
+  PrimaryGeneratedColumn,
   RelationId,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
 import { OutfitItem } from '../outfit-item/outfit-item.entity';
 import { ClothingItemTag } from '../clothing-item-tag/clothing-item-tag.entity';
+import { TagSummary } from './clothing-item.types';
 
 @Entity('clothing_items')
+@ObjectType()
 export class ClothingItem {
   /**
    * 🔑 Primary key: Unique identifier for each clothing item.
@@ -53,6 +56,7 @@ export class ClothingItem {
    * @example 1
    */
   @PrimaryGeneratedColumn()
+  @Field(() => Int)
   item_id: number;
 
   /**
@@ -60,6 +64,7 @@ export class ClothingItem {
    * @example "Blue Denim Jacket"
    */
   @Column()
+  @Field()
   name: string;
 
   /**
@@ -68,6 +73,7 @@ export class ClothingItem {
    * @example "Jackets"
    */
   @Column()
+  @Field()
   category: string;
 
   /**
@@ -76,6 +82,7 @@ export class ClothingItem {
    * @example "Blue"
    */
   @Column({ nullable: true })
+  @Field({ nullable: true })
   color: string;
 
   /**
@@ -84,6 +91,7 @@ export class ClothingItem {
    * @example "https://example.com/images/jacket.jpg"
    */
   @Column({ nullable: true })
+  @Field({ nullable: true })
   image_url: string;
 
   /**
@@ -102,6 +110,7 @@ export class ClothingItem {
    * Defined by the above `ManyToOne` relationship.
    */
   @RelationId((item: ClothingItem) => item.user)
+  @Field(() => Int)
   user_id: number;
 
   /**
@@ -125,6 +134,7 @@ export class ClothingItem {
    * Automatically set on insert.
    */
   @CreateDateColumn({ name: 'uploaded_at' })
+  @Field()
   uploaded_at: Date;
 
   /**
@@ -132,5 +142,9 @@ export class ClothingItem {
    * Automatically updated on modification.
    */
   @UpdateDateColumn({ name: 'updated_at' })
+  @Field()
   updated_at: Date;
+
+  @Field(() => [TagSummary], { nullable: true })
+  tags?: TagSummary[];
 }

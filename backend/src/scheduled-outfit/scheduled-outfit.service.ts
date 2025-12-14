@@ -1,27 +1,14 @@
-/**
- * Service: ScheduledOutfitService
- *
- * Handles all business logic for managing scheduled outfits.
- * This includes creating, retrieving, updating, and deleting records
- * that link users to specific outfits on scheduled dates.
- *
- * Responsibilities:
- * - Validates user and outfit existence before scheduling.
- * - Provides user-based filtering for scheduled outfits.
- * - Ensures referential integrity when modifying or deleting entries.
- */
-import {
-  Injectable,
-  NotFoundException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ScheduledOutfit } from './scheduled-outfit.entity';
-import { CreateScheduledOutfitDto } from './dto/create-scheduled-outfit.dto';
-import { UpdateScheduledOutfitDto } from './dto/update-scheduled-outfit.dto';
+import { CreateScheduledOutfitInput } from './dto/create-scheduled-outfit.dto';
+import { UpdateScheduledOutfitInput } from './dto/update-scheduled-outfit.dto';
 import { User } from '../user/user.entity';
 import { Outfit } from '../outfit/outfit.entity';
+import { ScheduledOutfitPayload, ScheduledOutfitWithMessage } from './scheduled-outfit.types';
+import { BasicUserSummary } from '../clothing-item/clothing-item.types';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class ScheduledOutfitService {
@@ -43,18 +30,8 @@ export class ScheduledOutfitService {
   /**
    * Creates a new scheduled outfit entry that links a user and an outfit
    * to a specific date in the calendar.
-   *
-   * @param dto - Data Transfer Object containing user ID, outfit ID, and schedule date.
-   * @returns The created `ScheduledOutfit` entity with relations included.
-   *
-   * Preconditions:
-   * - The referenced user and outfit must exist in the database.
-   *
-   * Postconditions:
-   * - A new record is saved linking the user, outfit, and provided date.
-   * - Throws `InternalServerErrorException` if persistence fails.
    */
-  async create(dto: CreateScheduledOutfitDto): Promise<ScheduledOutfit> {
+  async create(dto: CreateScheduledOutfitInput): Promise<ScheduledOutfitWithMessage> {
     const user = await this.userRepo.findOne({
       where: { user_id: dto.user_id },
     });
@@ -68,58 +45,51 @@ export class ScheduledOutfitService {
     const scheduled = this.scheduledOutfitRepo.create({
       user,
       outfit,
-      schedule_date: dto.schedule_date,
+      schedule_date: new Date(dto.schedule_date),
     });
 
     try {
-      return await this.scheduledOutfitRepo.save(scheduled);
+      const saved = await this.scheduledOutfitRepo.save(scheduled);
+      const entity = await this.loadWithRelations(saved.schedule_id);
+      return {
+        message: 'Scheduled outfit created successfully',
+        scheduled_outfit: this.mapPayload(entity),
+      };
     } catch (error) {
       throw new InternalServerErrorException('Failed to schedule outfit.');
     }
   }
 
   // ---------------------------------------------------------------------------
-  // READ (BY USER)
+  // READ (ALL + BY USER + BY ID)
   // ---------------------------------------------------------------------------
+
+  async findAll(): Promise<ScheduledOutfitPayload[]> {
+    const scheduled = await this.scheduledOutfitRepo.find({
+      relations: ['outfit', 'outfit.user', 'user'],
+      order: { schedule_date: 'ASC' },
+    });
+    return scheduled.map((item) => this.mapPayload(item));
+  }
 
   /**
    * Retrieves all scheduled outfits for a given user.
-   *
-   * @param user_id - The user’s unique ID.
-   * @returns A list of scheduled outfits, ordered by date.
-   *
-   * Postconditions:
-   * - Returns an empty array if no scheduled outfits exist for this user.
    */
-  async findAllByUser(user_id: number): Promise<ScheduledOutfit[]> {
-    return this.scheduledOutfitRepo.find({
+  async findAllByUser(user_id: number): Promise<ScheduledOutfitPayload[]> {
+    const scheduled = await this.scheduledOutfitRepo.find({
       where: { user: { user_id } },
-      relations: ['outfit', 'user'],
+      relations: ['outfit', 'outfit.user', 'user'],
       order: { schedule_date: 'ASC' },
     });
+    return scheduled.map((item) => this.mapPayload(item));
   }
-
-  // ---------------------------------------------------------------------------
-  // READ (BY ID)
-  // ---------------------------------------------------------------------------
 
   /**
    * Retrieves a specific scheduled outfit by its ID.
-   *
-   * @param id - The schedule ID to look up.
-   * @returns The corresponding scheduled outfit record with related user and outfit.
-   *
-   * Postconditions:
-   * - Throws `NotFoundException` if the record does not exist.
    */
-  async findOne(id: number): Promise<ScheduledOutfit> {
-    const scheduled = await this.scheduledOutfitRepo.findOne({
-      where: { schedule_id: id },
-      relations: ['outfit', 'user'],
-    });
-
-    if (!scheduled) throw new NotFoundException('Scheduled outfit not found.');
-    return scheduled;
+  async findOne(id: number): Promise<ScheduledOutfitPayload> {
+    const entity = await this.loadWithRelations(id);
+    return this.mapPayload(entity);
   }
 
   // ---------------------------------------------------------------------------
@@ -128,24 +98,18 @@ export class ScheduledOutfitService {
 
   /**
    * Updates the schedule date of an existing scheduled outfit.
-   *
-   * @param id - The ID of the scheduled outfit to update.
-   * @param dto - The DTO containing updated date information.
-   * @returns The updated scheduled outfit entity.
-   *
-   * Preconditions:
-   * - The provided ID must correspond to an existing record.
-   *
-   * Postconditions:
-   * - The schedule_date field is updated to reflect the new date.
    */
-  async update(
-    id: number,
-    dto: UpdateScheduledOutfitDto,
-  ): Promise<ScheduledOutfit> {
-    const scheduled = await this.findOne(id);
-    Object.assign(scheduled, dto);
-    return await this.scheduledOutfitRepo.save(scheduled);
+  async update(dto: UpdateScheduledOutfitInput): Promise<ScheduledOutfitWithMessage> {
+    const existing = await this.loadWithRelations(dto.schedule_id);
+    if (dto.schedule_date !== undefined) {
+      existing.schedule_date = new Date(dto.schedule_date);
+    }
+    const saved = await this.scheduledOutfitRepo.save(existing);
+    const entity = await this.loadWithRelations(saved.schedule_id);
+    return {
+      message: 'Scheduled outfit updated successfully',
+      scheduled_outfit: this.mapPayload(entity),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -154,16 +118,65 @@ export class ScheduledOutfitService {
 
   /**
    * Deletes a scheduled outfit by its unique ID.
-   *
-   * @param id - The ID of the scheduled outfit to delete.
-   * @throws NotFoundException if the record does not exist.
-   *
-   * Postconditions:
-   * - The scheduled outfit record is permanently removed from the database.
    */
-  async delete(id: number): Promise<void> {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.scheduledOutfitRepo.delete(id);
     if (result.affected === 0)
       throw new NotFoundException('Scheduled outfit not found.');
+    return { message: 'Scheduled outfit deleted successfully' };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  private async loadWithRelations(id: number): Promise<ScheduledOutfit> {
+    const scheduled = await this.scheduledOutfitRepo.findOne({
+      where: { schedule_id: id },
+      relations: ['outfit', 'outfit.user', 'user'],
+    });
+
+    if (!scheduled) throw new NotFoundException('Scheduled outfit not found.');
+    return scheduled;
+  }
+
+  private mapPayload(entity: ScheduledOutfit): ScheduledOutfitPayload {
+    const userSummary: BasicUserSummary | undefined = entity.user
+      ? {
+          user_id: entity.user.user_id,
+          username: entity.user.username,
+          email: entity.user.email,
+          profile_image_url: entity.user.profile_image_url,
+        }
+      : undefined;
+
+    const scheduleDate = this.normalizeDate(entity.schedule_date);
+    const createdAt = this.normalizeDate(entity.created_at);
+
+    return {
+      schedule_id: entity.schedule_id,
+      user_id: entity.user?.user_id ?? (entity as any).user_id,
+      outfit_id: entity.outfit?.outfit_id ?? (entity as any).outfit_id,
+      schedule_date: scheduleDate,
+      created_at: createdAt,
+      user: userSummary,
+      outfit: entity.outfit,
+    };
+  }
+
+  private normalizeDate(value?: Date | string | null): Date {
+    if (value instanceof Date) {
+      return value;
+    }
+    if (typeof value === 'string' && value.length > 0) {
+      const parsed =
+        value.length === 10
+          ? new Date(`${value}T00:00:00.000Z`)
+          : new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    throw new InternalServerErrorException('Invalid date value encountered.');
   }
 }

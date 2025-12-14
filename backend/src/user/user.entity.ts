@@ -1,18 +1,11 @@
-/**
- * Entity: User
- *
- * Represents an individual user within the system.
- * Stores authentication credentials, profile details, and manages relations
- * with all user-generated content such as outfits, clothing items, tags,
- * likes, comments, and scheduled outfits.
- */
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
+  Entity,
   OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { ClothingItem } from '../clothing-item/clothing-item.entity';
 import { Outfit } from '../outfit/outfit.entity';
@@ -23,64 +16,61 @@ import { Like } from '../like/like.entity';
 import { PasswordResetToken } from './password-reset-token.entity';
 
 @Entity('users')
+@ObjectType()
 export class User {
-  /** Unique auto-incrementing identifier for each user record */
   @PrimaryGeneratedColumn()
+  @Field(() => Int)
   user_id: number;
 
-  /** Unique username chosen by the user */
   @Column({ unique: true })
+  @Field(() => String)
   username: string;
 
-  /** Unique email address associated with the user account */
   @Column({ unique: true })
+  @Field(() => String)
   email: string;
 
-  /** Securely hashed version of the user's password */
   @Column({ nullable: true })
   password_hash?: string;
 
-  /** Optional profile image URL or base64-encoded string */
   @Column({ name: 'profile_image_url', type: 'text', nullable: true })
+  @Field(() => String, { nullable: true })
   profile_image_url?: string | null;
 
-  /** Timestamp marking when the user account was created */
   @CreateDateColumn({ name: 'created_at' })
+  @Field(() => Date)
   created_at: Date;
 
-  /** Timestamp of the latest user data update */
   @UpdateDateColumn({ name: 'updated_at' })
+  @Field(() => Date)
   updated_at: Date;
 
-  // ----------- RELATIONS -----------
-
-  /** User’s uploaded clothing items (wardrobe inventory) */
   @OneToMany(() => ClothingItem, (item) => item.user, {
     cascade: true,
   })
+  @Field(() => [ClothingItem], { nullable: true })
   clothing_items: ClothingItem[];
 
-  /** Outfits created by this user */
   @OneToMany(() => Outfit, (outfit) => outfit.user)
+  @Field(() => [Outfit], { nullable: true })
   outfits: Outfit[];
 
-  /** Scheduled outfits planned by the user */
   @OneToMany(() => ScheduledOutfit, (scheduled) => scheduled.user)
+  @Field(() => [ScheduledOutfit], { nullable: true })
   scheduled_outfits: ScheduledOutfit[];
 
-  /** Comments written by the user */
   @OneToMany(() => Comment, (comment) => comment.user)
+  @Field(() => [Comment], { nullable: true })
   comments: Comment[];
 
-  /** Tags created and owned by the user */
   @OneToMany(() => Tag, (tag) => tag.user, { cascade: true })
+  @Field(() => [Tag], { nullable: true })
   tags: Tag[];
 
-  /** Likes given by the user to public outfits */
   @OneToMany(() => Like, (like) => like.user)
+  @Field(() => [Like], { nullable: true })
   likes: Like[];
 
-  /** Password reset tokens generated for this user's account */
   @OneToMany(
     () => PasswordResetToken,
     (passwordResetToken) => passwordResetToken.user,

@@ -1,5 +1,5 @@
 /**
- * 📘 Data Transfer Object: UpdateClothingItemDto
+ * 📘 GraphQL Input: UpdateClothingItemInput
  *
  * Represents the structure used when updating an existing clothing item.
  * This DTO ensures that all modifications to clothing records are
@@ -22,71 +22,37 @@
  * - ClothingItem
  */
 
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber } from 'class-validator';
+import { Field, InputType, Int, PartialType } from '@nestjs/graphql';
+import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { CreateClothingItemInput } from './create-clothing-item.dto';
 
-export class UpdateClothingItemDto {
-  /**
-   * Updated name for the clothing item.
-   * Optional — only include if changing the name.
-   * @example "Blue Denim Jacket"
-   */
-  @ApiPropertyOptional({
-    example: 'Blue Denim Jacket',
-    description: 'Updated name of the clothing item',
-  })
+@InputType()
+export class UpdateClothingItemInput extends PartialType(CreateClothingItemInput) {
+  @Field(() => Int)
+  @IsNumber()
+  item_id: number;
+
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   name?: string;
 
-  /**
-   * Updated category or type of the clothing item.
-   * Optional field.
-   * @example "Jackets"
-   */
-  @ApiPropertyOptional({
-    example: 'Jackets',
-    description: 'Updated category or type of clothing',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   category?: string;
 
-  /**
-   * Updated color value for the item.
-   * Optional field.
-   * @example "Blue"
-   */
-  @ApiPropertyOptional({
-    example: 'Blue',
-    description: 'Updated color of the item',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   color?: string;
 
-  /**
-   * New image URL for the clothing item.
-   * Used when updating the visual representation of the piece.
-   * @example "https://example.com/images/jacket-new.jpg"
-   */
-  @ApiPropertyOptional({
-    example: 'https://example.com/images/jacket-new.jpg',
-    description: 'Updated image URL for the clothing item',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   image_url?: string;
 
-  /**
-   * Updated user ID if transferring ownership to another account.
-   * Should correspond to a valid user record.
-   * @example 1
-   */
-  @ApiPropertyOptional({
-    example: 1,
-    description: 'User ID (if changing ownership)',
-  })
+  @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsNumber()
   user_id?: number;

@@ -1,111 +1,84 @@
-# 🌟 Virtual Closet – Wardrobe & Outfit Studio
+# Virtual Closet — Wardrobe & Outfit Studio
 
-Virtual Closet digitizes wardrobes, powers a drag‑and‑drop outfit studio, and lets stylists share their looks with the community. The platform combines a TypeScript React SPA with a NestJS API backed by PostgreSQL.
+Virtual Closet digitizes personal wardrobes, powers a drag-and-drop outfit studio, and lets creators share looks with the community. The platform pairs a Vite + React 18 SPA with a NestJS GraphQL API backed by PostgreSQL.
 
----
+## Architecture at a Glance
+- **Frontend**: React 18, TypeScript, Vite dev server, Redux Toolkit state, Axios GraphQL client, html2canvas for canvas exports.
+- **Backend**: NestJS 11, Apollo GraphQL, TypeORM, PostgreSQL, JWT auth, Nodemailer, OpenWeather + Groq integrations for weather-aware AI styling.
+- **Shared Contracts**: GraphQL schema (auto-generated) consumed by strongly-typed Redux slices and hooks.
 
-## 🔍 Overview
+## Feature Highlights
+- Wardrobe catalog (upload, tag, color-code, delete items).
+- Canvas-based outfit studio with z-index and transforms.
+- Community feed with likes/comments plus creator inbox.
+- Scheduler + wardrobe insights (favorite tags/colors, most worn item).
+- AI stylist chat that references the user’s wardrobe and local weather.
 
-- **Frontend:** React 18 · Vite · TypeScript · Axios · custom hooks
-- **Backend:** NestJS 10 · TypeORM · PostgreSQL · JWT auth · Nodemailer
-- **Features:** Wardrobe catalog, canvas editor, calendar scheduling, likes/comments, creator profiles, password reset, weather widget
-- **Demo:** Self-host locally (`http://localhost:5173`) or deploy both apps and point `VITE_API_BASE_URL` to the API.
+## Project Setup
 
----
+### Prerequisites
+- Node.js 18+ and npm 9+
+- PostgreSQL 14+
+- Groq API key (for AI stylist) and OpenWeather API key (optional but recommended)
+- Git, PowerShell/Bash shell
 
-## 🚀 Quick Start
+### Environment Variables
+Copy `.env.example` to `.env` at the repo root and adjust as needed. The backend and frontend both read from this file.
 
-```bash
-# Backend
-cd backend
-cp .env.example .env         # set DATABASE_URL, JWT_SECRET, SMTP_*
-npm install
-npm run typeorm migration:run
-npm run start:dev
-
-# Frontend
-cd frontend
-cp .env.example .env         # set VITE_API_BASE_URL=http://localhost:3000
-npm install
-npm run dev
-```
-
----
-
-## ⚙️ Environment Variables
-
-| Location | Keys |
-| --- | --- |
-| `backend/.env` | `DATABASE_URL`, `JWT_SECRET`, `SMTP_HOST/PORT/USER/PASS`, `FRONTEND_URL` |
-| `frontend/.env` | `VITE_API_BASE_URL`, `VITE_OPENWEATHER_KEY` *(optional override)* |
-
-Sample `.env` snippets are included in [`docs/PROJECT_DOCUMENTATION.md`](./docs/PROJECT_DOCUMENTATION.md#101-sample-env-values).
-
----
-
-## 🔌 API Highlights
-
-| Method | Route | Description |
+| Scope | Keys | Notes |
 | --- | --- | --- |
-| `POST` | `/users/register` | Create account and return sanitized user |
-| `POST` | `/users/login` | Issue JWT + user payload for localStorage |
-| `GET` | `/outfits/feed?search=` | Community feed with optional search term |
-| `POST` | `/outfits` | Save/publish outfit designed in the studio |
-| `POST` | `/likes/toggle` | Toggle heart on an outfit (powers inbox) |
-| `POST` | `/scheduled-outfits` | Schedule outfit on profile calendar |
+| Backend (`backend/.env`) | `NODE_ENV`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `GROQ_API_KEY`, `GROQ_MODEL`, `OPENWEATHER_API_KEY` | SMTP settings are required for password reset in production; Groq/OpenWeather unlock stylist + weather-aware prompts. |
+| Frontend (`frontend/.env`) | `VITE_GRAPHQL_ENDPOINT`, `VITE_WEATHER_API_KEY` | Default GraphQL endpoint is `http://localhost:3000/graphql`. |
 
-Full request/response samples live in the documentation file.
+> **Tip:** In development TypeORM runs with `synchronize = true`, so schema changes are auto-applied. Disable this and use migrations before going to production.
 
----
-
-## 🗃️ Database Snapshot
-
-- `users` owns clothing items, outfits, likes, comments, scheduled outfits
-- `outfits` connect to clothing via `outfit_items` join table (stores canvas positions)
-- `likes` provide creator inbox entries (filtered by current day)
-- `tags` + `clothing_item_tag` enable custom wardrobe categorization
-
-See the ERD description in [`docs/PROJECT_DOCUMENTATION.md`](./docs/PROJECT_DOCUMENTATION.md#5-%EF%B8%8F-database-schema).
-
----
-
-## 🧪 Testing
-
+### Install Dependencies
 ```bash
 # Backend
 cd backend
-npm run test      # unit (Jest)
-npm run test:e2e  # end-to-end (requires Postgres)
+npm install
 
 # Frontend
-cd frontend
-npm run test      # Vitest unit/UI tests
-npm run lint      # ESLint + TypeScript checks
+cd ../frontend
+npm install
 ```
 
-Manual QA checklist (studio interactions, feed likes, profile calendar) is documented in the project docs.
+## Running Locally
+1. **Start PostgreSQL** and ensure the database specified in `.env` exists.
+2. **Backend**:
+   ```bash
+   cd backend
+   npm run start:dev
+   # GraphQL playground: http://localhost:3000/graphql
+   ```
+3. **Frontend**:
+   ```bash
+   cd frontend
+   npm run dev
+   # Vite serves on http://localhost:5173 by default
+   ```
+4. Open the frontend URL, register or log in, and begin uploading wardrobe items or building outfits.
 
----
+## Testing & Quality Checks
+- **Backend** (Jest): `npm run test`, `npm run test:e2e`, `npm run lint`
+- **Frontend** (currently manual): `npm run lint`; add Vitest/RTL when UI tests are introduced.
+- **Manual QA**: Sign in → upload wardrobe items → build & save outfits → like/comment/feed actions → schedule outfits → interact with stylist chat.
 
-## 📚 Documentation & Code Comments
+## API Entry Point
+- Single GraphQL endpoint: `POST /graphql`
+- Authentication: send `Authorization: Bearer <JWT>` for every mutation and protected query (`login` and `register` are unauthenticated).
+- Detailed schema docs, sample queries, and mutation payloads live in [`docs/PROJECT_DOCUMENTATION.md`](docs/PROJECT_DOCUMENTATION.md#3-api-endpoints--usage).
 
-- Comprehensive reference: [`docs/PROJECT_DOCUMENTATION.md`](./docs/PROJECT_DOCUMENTATION.md)
-- Includes setup, API catalog, schema, troubleshooting, and code documentation standards (TSDoc/JSDoc usage is already applied to core services).
+## Database Snapshot
+- `users` (auth + profile) relates to wardrobe (`clothing_items`), outfits (`outfits`), likes/comments, scheduled outfits, and tags (`tags` + `clothing_item_tags` join table).
+- Cascades remove outfits, wardrobe items, likes, and scheduled entries when a user is deleted.
+- A generated schema overview plus ERD notes are available in [`docs/PROJECT_DOCUMENTATION.md`](docs/PROJECT_DOCUMENTATION.md#4-database-schema).
 
----
+## Tooling & Third-Party Services
+- **Frontend**: React 18, React Router, Redux Toolkit, Axios, html2canvas, TypeScript, ESLint.
+- **Backend**: NestJS, Apollo GraphQL, TypeORM, class-validator, bcrypt, jsonwebtoken, Nodemailer.
+- **AI & Weather**: Groq (LLMs) and OpenWeather (current conditions).
+- **Dev Experience**: Vite dev server, Nest CLI, Jest, ESLint, Prettier.
 
-## 🤝 Contributing
-
-1. Fork and clone the repository
-2. `git checkout -b feat/awesome-improvement`
-3. Run backend + frontend lint/tests
-4. Submit a PR with screenshots/GIFs for UI work
-
----
-
-## 📄 License
-
-MIT © Virtual Closet Team
-
-Made with ❤️ by stylists, for stylists.
-
+## Documentation & Support
+The full project manual (setup, troubleshooting, API catalog, schema, manual QA script, and in-depth method reference) is maintained in [`docs/PROJECT_DOCUMENTATION.md`](docs/PROJECT_DOCUMENTATION.md). Keep that document in sync when code or contracts change.

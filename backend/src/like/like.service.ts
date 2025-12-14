@@ -29,6 +29,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Like } from './like.entity';
+import { CreateLikeInput } from './dto/create-like.input';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class LikesService {
@@ -52,7 +54,7 @@ export class LikesService {
   ): Promise<Like | null> {
     return this.repo.findOne({
       where: { user: { user_id }, outfit: { outfit_id } },
-      relations: ['user', 'outfit'],
+      relations: ['user', 'outfit', 'outfit.user'],
     });
   }
 
@@ -62,7 +64,7 @@ export class LikesService {
    * @returns Array of all like records with related user and outfit data.
    */
   async getAll(): Promise<Like[]> {
-    return this.repo.find({ relations: ['user', 'outfit'] });
+    return this.repo.find({ relations: ['user', 'outfit', 'outfit.user'] });
   }
 
   /**
@@ -77,7 +79,7 @@ export class LikesService {
   async getById(id: number): Promise<Like> {
     const like = await this.repo.findOne({
       where: { like_id: id },
-      relations: ['user', 'outfit'],
+      relations: ['user', 'outfit', 'outfit.user'],
     });
     if (!like) throw new NotFoundException('Like not found');
     return like;
@@ -92,7 +94,7 @@ export class LikesService {
    * 🔹 Postcondition:
    * - Returns all likes associated with the given user.
    */
-  async getByUser(user_id: number) {
+  async getByUser(user_id: number): Promise<Like[]> {
     return this.repo.find({
       where: { user: { user_id } },
       relations: ['user', 'outfit', 'outfit.user'],
@@ -106,7 +108,7 @@ export class LikesService {
    * @param user_id - The creator’s user ID.
    * @returns Array of likes on outfits belonging to the creator.
    */
-  async getForCreator(user_id: number) {
+  async getForCreator(user_id: number): Promise<Like[]> {
     return this.repo.find({
       where: { outfit: { user: { user_id } } },
       relations: ['user', 'outfit', 'outfit.user'],
@@ -128,7 +130,11 @@ export class LikesService {
    * 🔹 Postcondition:
    * - A new like record is created, or an existing one is returned.
    */
-  async create(user_id: number, outfit_id: number) {
+  async create(user_id: number, outfit_id: number): Promise<{
+    message: string;
+    like?: Like;
+    liked: boolean;
+  }> {
     const existing = await this.findByUserAndOutfit(user_id, outfit_id);
     if (existing) {
       return {
@@ -162,7 +168,11 @@ export class LikesService {
    * - If a like exists → remove it (unlike).
    * - If not → create a new like.
    */
-  async toggle(user_id: number, outfit_id: number) {
+  async toggle(user_id: number, outfit_id: number): Promise<{
+    message: string;
+    like?: Like;
+    liked: boolean;
+  }> {
     const existing = await this.findByUserAndOutfit(user_id, outfit_id);
     if (existing) {
       await this.repo.delete(existing.like_id);
@@ -191,7 +201,7 @@ export class LikesService {
    * - The like record is permanently removed.
    * - Throws NotFoundException if the record doesn’t exist.
    */
-  async delete(id: number) {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (!result.affected) throw new NotFoundException('Like not found');
     return { message: 'Like deleted successfully' };

@@ -26,15 +26,12 @@
  * - A valid mapping record is created, retrieved, or deleted.
  */
 
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClothingItemTag } from './clothing-item-tag.entity';
-import { CreateClothingItemTagDto } from './dto/create-clothing-item-tag.dto';
+import { CreateClothingItemTagInput } from './dto/create-clothing-item-tag.dto';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class ClothingItemTagsService {
@@ -51,8 +48,16 @@ export class ClothingItemTagsService {
    * 🔹 Postcondition:
    * - Returns a list of all associations stored in `clothing_item_tags`.
    */
-  async getAll() {
+  async findAll(): Promise<ClothingItemTag[]> {
     return this.repo.find({ relations: ['clothing_item', 'tag'] });
+  }
+
+  async findOne(id: number): Promise<ClothingItemTag> {
+    const mapping = await this.repo.findOne({ where: { id }, relations: ['clothing_item', 'tag'] });
+    if (!mapping) {
+      throw new NotFoundException('Clothing item tag mapping not found.');
+    }
+    return mapping;
   }
 
   /**
@@ -67,7 +72,7 @@ export class ClothingItemTagsService {
    * 🔹 Postcondition:
    * - Returns all linked tags or throws a NotFoundException if none are found.
    */
-  async getByItem(item_id: number) {
+  async getByItem(item_id: number): Promise<ClothingItemTag[]> {
     const mappings = await this.repo.find({
       where: { clothing_item: { item_id } },
       relations: ['clothing_item', 'tag'],
@@ -90,7 +95,10 @@ export class ClothingItemTagsService {
    * - A new record is inserted into `clothing_item_tags`.
    * - If the mapping already exists, a BadRequestException is thrown.
    */
-  async addTagToItem(dto: CreateClothingItemTagDto) {
+  async addTagToItem(dto: CreateClothingItemTagInput): Promise<{
+    message: string;
+    mapping: ClothingItemTag;
+  }> {
     const { item_id, tag_id } = dto;
 
     if (!item_id || !tag_id)
@@ -116,6 +124,11 @@ export class ClothingItemTagsService {
     };
   }
 
+  async create(dto: CreateClothingItemTagInput): Promise<ClothingItemTag> {
+    const result = await this.addTagToItem(dto);
+    return this.findOne(result.mapping.id) as Promise<ClothingItemTag>;
+  }
+
   /**
    * ❌ Deletes a specific clothing-item–tag mapping.
    *
@@ -129,7 +142,7 @@ export class ClothingItemTagsService {
    * - The record is permanently deleted.
    * - Throws NotFoundException if no matching record is found.
    */
-  async remove(id: number) {
+  async remove(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (!result.affected)
       throw new NotFoundException('Mapping not found or already removed');

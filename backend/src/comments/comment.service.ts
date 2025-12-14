@@ -27,18 +27,15 @@
  * - Comments are persisted, retrievable, editable, or removable as required.
  */
 
-import {
-  Injectable,
-  NotFoundException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Comment } from './comment.entity';
-import { CreateCommentDto } from './dto/create-comment.dto';
-import { UpdateCommentDto } from './dto/update-comment.dto';
+import { CreateCommentInput } from './dto/create-comment.dto';
+import { UpdateCommentInput } from './dto/update-comment.dto';
 import { User } from '../user/user.entity';
 import { Outfit } from '../outfit/outfit.entity';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class CommentService {
@@ -65,7 +62,7 @@ export class CommentService {
    * 🔹 Postcondition:
    * - A new comment is saved and linked to the user and outfit.
    */
-  async create(dto: CreateCommentDto): Promise<Comment> {
+  async create(dto: CreateCommentInput): Promise<Comment> {
     const user = await this.userRepo.findOne({
       where: { user_id: dto.user_id },
     });
@@ -79,7 +76,7 @@ export class CommentService {
     const comment = this.commentRepo.create({
       user,
       outfit,
-      comment_text: dto.comment_text,
+      content: dto.content,
     });
 
     try {
@@ -140,7 +137,7 @@ export class CommentService {
    * 🔹 Postcondition:
    * - Comment text is updated in the database.
    */
-  async update(id: number, dto: UpdateCommentDto): Promise<Comment> {
+  async update(id: number, dto: UpdateCommentInput): Promise<Comment> {
     const comment = await this.findOne(id);
     Object.assign(comment, dto);
     return await this.commentRepo.save(comment);
@@ -158,9 +155,10 @@ export class CommentService {
    * - Comment is permanently removed.
    * - Throws NotFoundException if it doesn’t exist.
    */
-  async delete(id: number): Promise<void> {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.commentRepo.delete(id);
     if (result.affected === 0)
       throw new NotFoundException('Comment not found.');
+    return { message: 'Comment deleted successfully' };
   }
 }

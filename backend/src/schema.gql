@@ -1,0 +1,444 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthPayload {
+  message: String!
+  token: String
+  user: User
+}
+
+type BasicUserSummary {
+  email: String
+  profile_image_url: String
+  user_id: Int!
+  username: String
+}
+
+type ClothingItem {
+  category: String!
+  color: String
+  image_url: String
+  item_id: Int!
+  name: String!
+  tags: [TagSummary!]
+  updated_at: DateTime!
+  uploaded_at: DateTime!
+  user_id: Int!
+}
+
+type ClothingItemPayload {
+  category: String!
+  color: String
+  image_url: String
+  item_id: Int!
+  name: String!
+  tags: [TagSummary!]!
+  updated_at: DateTime!
+  uploaded_at: DateTime!
+  user: BasicUserSummary
+  user_id: Int!
+}
+
+type ClothingItemTag {
+  created_at: DateTime!
+  id: Int!
+}
+
+type Comment {
+  comment_id: Int!
+  content: String!
+  created_at: DateTime!
+  outfit: Outfit!
+  outfit_id: Int!
+  updated_at: DateTime!
+  user: User!
+  user_id: Int!
+}
+
+input CreateClothingItemInput {
+  category: String!
+  color: String
+  image_url: String
+  name: String!
+  tag_ids: [Int!]
+  tag_names: [String!]
+  user_id: Int!
+}
+
+input CreateClothingItemTagInput {
+  item_id: Int!
+  tag_id: Int!
+}
+
+input CreateCommentInput {
+  content: String!
+  outfit_id: Int!
+  user_id: Int!
+}
+
+input CreateLikeInput {
+  outfit_id: Int!
+  user_id: Int!
+}
+
+input CreateOutfitInput {
+  cover_image_url: String
+  is_public: Boolean
+  name: String
+  user_id: Int
+}
+
+input CreateOutfitItemInput {
+  item_id: Int!
+  outfit_id: Int!
+  transform: String
+  x_position: Int
+  y_position: Int
+  z_index: Int
+}
+
+input CreateScheduledOutfitInput {
+  outfit_id: Int!
+  schedule_date: String!
+  user_id: Int!
+}
+
+input CreateTagInput {
+  name: String!
+}
+
+input CreateUserInput {
+  email: String!
+  password: String!
+  username: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+input ForgotPasswordInput {
+  email: String!
+}
+
+type Like {
+  created_at: DateTime!
+  like_id: Int!
+  outfit: Outfit!
+  outfit_id: Int!
+  user: User!
+  user_id: Int!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type MessagePayload {
+  message: String!
+}
+
+type Mutation {
+  askStylist(input: StylistInput!): StylistResponse!
+  createClothingItem(createClothingItemInput: CreateClothingItemInput!): ClothingItemPayload!
+  createClothingItemTag(createClothingItemTagInput: CreateClothingItemTagInput!): ClothingItemTag!
+  createComment(createCommentInput: CreateCommentInput!): Comment!
+  createOutfit(createOutfitInput: CreateOutfitInput!): OutfitPayload!
+  createOutfitItem(createOutfitItemInput: CreateOutfitItemInput!): OutfitItemPayload!
+  createScheduledOutfit(createScheduledOutfitInput: CreateScheduledOutfitInput!): ScheduledOutfitPayload!
+  createTag(createTagInput: CreateTagInput!): Tag!
+  deleteClothingItem(id: Int!): MessagePayload!
+  deleteComment(id: Int!): MessagePayload!
+  deleteLike(id: Int!): MessagePayload!
+  deleteOutfit(id: Int!): MessagePayload!
+  deleteOutfitItem(id: Int!): MessagePayload!
+  deleteScheduledOutfit(id: Int!): MessagePayload!
+  deleteTag(id: Int!): MessagePayload!
+  deleteUser(id: Int!): MessagePayload!
+  likeOutfit(createLikeInput: CreateLikeInput!): Like!
+  login(loginInput: LoginInput!): AuthPayload!
+  register(createUserInput: CreateUserInput!): UserPayload!
+  removeClothingItemTag(id: Int!): MessagePayload!
+  requestPasswordReset(forgotPasswordInput: ForgotPasswordInput!): PasswordResetRequestPayload!
+  resetPassword(resetPasswordInput: ResetPasswordInput!): MessagePayload!
+  toggleLike(createLikeInput: CreateLikeInput!): Like
+  updateClothingItem(updateClothingItemInput: UpdateClothingItemInput!): ClothingItemPayload!
+  updateComment(updateCommentInput: UpdateCommentInput!): Comment!
+  updateOutfit(updateOutfitInput: UpdateOutfitInput!): OutfitPayload!
+  updateOutfitItem(updateOutfitItemInput: UpdateOutfitItemInput!): OutfitItemPayload!
+  updateScheduledOutfit(updateScheduledOutfitInput: UpdateScheduledOutfitInput!): ScheduledOutfitPayload!
+  updateTag(updateTagInput: UpdateTagInput!): Tag!
+  updateUser(updateUserInput: UpdateUserInput!): UserPayload!
+}
+
+type Outfit {
+  comment_count: Int
+  cover_image_url: String
+  created_at: DateTime!
+  is_public: Boolean!
+  like_count: Int
+  liked_by_viewer: Boolean
+  name: String
+  outfit_id: Int!
+  updated_at: DateTime!
+  user: User!
+  user_id: Int!
+}
+
+type OutfitItemPayload {
+  item: ClothingItem
+  item_id: Int!
+  outfit: Outfit
+  outfit_id: Int!
+  outfit_item_id: Int!
+  transform: String
+  x_position: Int
+  y_position: Int
+  z_index: Int
+}
+
+type OutfitPayload {
+  comment_count: Int
+  cover_image_url: String
+  created_at: DateTime!
+  is_public: Boolean!
+  like_count: Int
+  liked_by_viewer: Boolean
+  name: String
+  outfit_id: Int!
+  updated_at: DateTime!
+  user: BasicUserSummary
+  user_id: Int!
+}
+
+type PasswordResetRequestPayload {
+  email: String
+  emailDelivery: Boolean
+  message: String!
+  resetCode: String
+  resetToken: String
+}
+
+type Query {
+  clothingItem(id: Int!): ClothingItemPayload!
+  clothingItemTag(id: Int!): ClothingItemTag!
+  clothingItemTags: [ClothingItemTag!]!
+  clothingItems: [ClothingItemPayload!]!
+  clothingItemsByUser(userId: Int!): [ClothingItemPayload!]!
+  comment(id: Int!): Comment!
+  commentsByOutfit(outfitId: Int!): [Comment!]!
+  like(id: Int!): Like!
+  likes: [Like!]!
+  likesByUser(userId: Int!): [Like!]!
+  likesForCreator(creatorId: Int!): [Like!]!
+  me: User!
+  outfit(id: Int!): OutfitPayload!
+  outfitItem(id: Int!): OutfitItemPayload!
+  outfitItems: [OutfitItemPayload!]!
+  outfitItemsByOutfit(outfitId: Int!): [OutfitItemPayload!]!
+  outfits: [OutfitPayload!]!
+  outfitsByUser(userId: Int!): [OutfitPayload!]!
+  publicOutfitFeed(search: String, viewerId: Int): [OutfitPayload!]!
+  scheduledOutfit(id: Int!): ScheduledOutfitPayload!
+  scheduledOutfits: [ScheduledOutfitPayload!]!
+  scheduledOutfitsByUser(userId: Int!): [ScheduledOutfitPayload!]!
+  tag(id: Int!): Tag!
+  tags: [Tag!]!
+  user(id: Int!): User!
+  users: [User!]!
+  wardrobeSummary(userId: Int!): WardrobeSummary!
+}
+
+input ResetPasswordInput {
+  code: String!
+  password: String!
+  token: String!
+}
+
+type ScheduledOutfit {
+  created_at: DateTime!
+  outfit: Outfit!
+  schedule_date: DateTime!
+  schedule_id: Int!
+  user: User!
+}
+
+type ScheduledOutfitPayload {
+  created_at: DateTime!
+  outfit: Outfit
+  outfit_id: Int!
+  schedule_date: DateTime!
+  schedule_id: Int!
+  user: BasicUserSummary
+  user_id: Int!
+}
+
+type ShoppingSuggestion {
+  category: String!
+  reason: String!
+}
+
+input StylistInput {
+  message: String!
+  userId: Int!
+}
+
+type StylistItemSuggestion {
+  itemId: Int!
+  reason: String
+}
+
+type StylistMessage {
+  sender: String!
+  text: String!
+}
+
+type StylistOutfitSuggestion {
+  items: [StylistItemSuggestion!]!
+  name: String!
+  reasoning: String!
+}
+
+type StylistResponse {
+  messages: [StylistMessage!]!
+  outfits: [StylistOutfitSuggestion!]!
+  shoppingSuggestions: [ShoppingSuggestion!]!
+}
+
+type Tag {
+  created_at: DateTime!
+  name: String!
+  tag_id: Int!
+  updated_at: DateTime!
+  user: User
+}
+
+type TagSummary {
+  name: String!
+  tag_id: Int!
+}
+
+input UpdateClothingItemInput {
+  category: String
+  color: String
+  image_url: String
+  item_id: Int!
+  name: String
+  tag_ids: [Int!]
+  tag_names: [String!]
+  user_id: Int
+}
+
+input UpdateCommentInput {
+  comment_id: Int!
+  content: String
+  outfit_id: Int
+  user_id: Int
+}
+
+input UpdateOutfitInput {
+  cover_image_url: String
+  is_public: Boolean
+  name: String
+  outfit_id: Int!
+  user_id: Int
+}
+
+input UpdateOutfitItemInput {
+  item_id: Int
+  outfit_id: Int
+  outfit_item_id: Int!
+  transform: String
+  x_position: Int
+  y_position: Int
+  z_index: Int
+}
+
+input UpdateScheduledOutfitInput {
+  outfit_id: Int
+  schedule_date: String
+  schedule_id: Int!
+  user_id: Int
+}
+
+input UpdateTagInput {
+  name: String
+  tag_id: Int!
+}
+
+input UpdateUserInput {
+  email: String
+  id: Int!
+  password: String
+  profile_image_url: String
+  username: String
+}
+
+type User {
+  clothing_items: [ClothingItem!]
+  comments: [Comment!]
+  created_at: DateTime!
+  email: String!
+  likes: [Like!]
+  outfits: [Outfit!]
+  profile_image_url: String
+  scheduled_outfits: [ScheduledOutfit!]
+  tags: [Tag!]
+  updated_at: DateTime!
+  user_id: Int!
+  username: String!
+}
+
+type UserPayload {
+  message: String!
+  user: User!
+}
+
+type WardrobeColorStat {
+  color: String!
+  count: Int!
+}
+
+type WardrobeItemStat {
+  category: String
+  color: String
+  image_url: String
+  item_id: Int!
+  name: String!
+  wear_count: Int!
+}
+
+type WardrobePreviewItem {
+  category: String
+  color: String
+  image_url: String
+  item_id: Int!
+  name: String!
+}
+
+type WardrobePreviewOutfit {
+  cover_image_url: String
+  is_public: Boolean!
+  name: String
+  outfit_id: Int!
+}
+
+type WardrobeSummary {
+  favorite_colors: [WardrobeColorStat!]!
+  favorites: [String!]!
+  latest_items: [WardrobePreviewItem!]!
+  latest_outfits: [WardrobePreviewOutfit!]!
+  most_worn_item: WardrobeItemStat
+  top_tags: [WardrobeTagStat!]!
+  total_items: Int!
+  total_outfits: Int!
+  user_id: Int!
+}
+
+type WardrobeTagStat {
+  count: Int!
+  tag: String!
+}

@@ -31,12 +31,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClothingItemTag } from './clothing-item-tag.entity';
 import { ClothingItemTagsService } from './clothing-item-tags.service';
-import { ClothingItemTagsController } from './clothing-item-tags.controller';
+import { ClothingItemTagResolver } from './clothing-item-tags.resolver';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ClothingItemTag])],
-  controllers: [ClothingItemTagsController],
-  providers: [ClothingItemTagsService],
+  controllers: [],
+  providers: [ClothingItemTagsService, ClothingItemTagResolver],
   exports: [ClothingItemTagsService],
 })
 export class ClothingItemTagsModule {}

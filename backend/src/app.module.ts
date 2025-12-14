@@ -1,21 +1,10 @@
-/**
- * Module: AppModule
- *
- * The root application module that wires together all feature modules,
- * database entities, and static asset configuration for the Virtual Closet project.
- *
- * Responsibilities:
- *  - Registers global configuration for TypeORM (PostgreSQL).
- *  - Serves uploaded images statically from the `/public/images` directory.
- *  - Imports all feature modules (Users, Outfits, Tags, Comments, Likes, etc.)
- *    to make their controllers and services available throughout the app.
- *
- * @note `synchronize: true` is enabled for development and should be disabled in production.
- */
+import 'dotenv/config';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 
 // --- Entities ---
 import { User } from './user/user.entity';
@@ -39,9 +28,40 @@ import { CommentModule } from './comments/comment.module';
 import { TagsModule } from './tag/tags.module';
 import { ClothingItemTagsModule } from './clothing-item-tag/clothing-item-tags.module';
 import { LikesModule } from './like/like.module';
+import { AuthModule } from './auth/auth.module';
+import { WeatherModule } from './weather/weather.module';
+import { StylistModule } from './stylist/stylist.module';
+
+const requiredEnv = (name: string) => {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+};
+
+const parseNumberEnv = (name: string) => {
+  const raw = requiredEnv(name);
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`Environment variable ${name} must be a valid number.`);
+  }
+  return parsed;
+};
+
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+const synchronize = nodeEnv === 'production' ? false : true;
 
 @Module({
   imports: [
+    GraphQLModule.forRoot<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      sortSchema: true,
+      path: '/graphql',
+      context: ({ req }) => ({ req }),
+    }),
+
     /**
      * Serves static image assets from the /public/images directory.
      * This allows frontend clients to load uploaded images via /images URLs.
@@ -57,11 +77,11 @@ import { LikesModule } from './like/like.module';
      */
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'postgres',
-      database: 'virtual_closet_clueless',
+      host: requiredEnv('DB_HOST'),
+      port: parseNumberEnv('DB_PORT'),
+      username: requiredEnv('DB_USERNAME'),
+      password: requiredEnv('DB_PASSWORD'),
+      database: requiredEnv('DB_NAME'),
       entities: [
         User,
         ClothingItem,
@@ -74,7 +94,7 @@ import { LikesModule } from './like/like.module';
         Like,
         PasswordResetToken,
       ],
-      synchronize: true, // ⚠️ Use only in development; disables migrations.
+      synchronize,
     }),
 
     // --- Domain Modules ---
@@ -87,6 +107,9 @@ import { LikesModule } from './like/like.module';
     TagsModule,
     ClothingItemTagsModule,
     LikesModule,
+    AuthModule,
+    WeatherModule,
+    StylistModule,
   ],
 })
 export class AppModule {}

@@ -9,16 +9,14 @@
  * TypeORM repositories and ensures referential integrity between
  * outfits and clothing items.
  */
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OutfitItem } from './outfit-item.entity';
-import { CreateOutfitItemDto } from './dto/create-outfit-item.dto';
-import { UpdateOutfitItemDto } from './dto/update-outfit-item.dto';
+import { CreateOutfitItemInput } from './dto/create-outfit-item.dto';
+import { UpdateOutfitItemInput } from './dto/update-outfit-item.dto';
+import { OutfitItemPayload } from './outfit-item.types';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class OutfitItemService {
@@ -37,8 +35,9 @@ export class OutfitItemService {
    * @returns A list of all existing OutfitItem records,
    *          including their linked outfit and clothing item entities.
    */
-  async getAll() {
-    return this.repo.find({ relations: ['outfit', 'item'] });
+  async getAll(): Promise<OutfitItemPayload[]> {
+    const items = await this.repo.find({ relations: ['outfit', 'item'] });
+    return items.map((i) => this.mapPayload(i));
   }
 
   // ---------------------------------------------------------------------------
@@ -57,13 +56,13 @@ export class OutfitItemService {
    * Postconditions:
    * - Throws `NotFoundException` if the ID does not exist.
    */
-  async getById(id: number) {
+  async getById(id: number): Promise<OutfitItemPayload> {
     const record = await this.repo.findOne({
       where: { outfit_item_id: id },
       relations: ['outfit', 'item'],
     });
     if (!record) throw new NotFoundException('Outfit item not found.');
-    return record;
+    return this.mapPayload(record);
   }
 
   // ---------------------------------------------------------------------------
@@ -82,14 +81,16 @@ export class OutfitItemService {
    * Postconditions:
    * - Throws `NotFoundException` if no items are linked to the outfit.
    */
-  async getByOutfit(outfit_id: number) {
+  async getByOutfit(outfit_id: number): Promise<OutfitItemPayload[]> {
     const items = await this.repo.find({
       where: { outfit: { outfit_id } },
       relations: ['outfit', 'item'],
+      order: { z_index: 'ASC' },
     });
-    if (!items.length)
-      throw new NotFoundException('No clothing items found for this outfit.');
-    return items;
+    if (!items.length) {
+      return [];
+    }
+    return items.map((i) => this.mapPayload(i));
   }
 
   // ---------------------------------------------------------------------------
@@ -109,20 +110,29 @@ export class OutfitItemService {
    * Postconditions:
    * - A new record is stored linking the clothing item to the outfit.
    */
-  async create(data: CreateOutfitItemDto) {
+  async create(data: CreateOutfitItemInput): Promise<{ message: string; outfit_item: OutfitItemPayload }> {
     const { outfit_id, item_id } = data;
     if (!outfit_id || !item_id) {
       throw new BadRequestException('Missing outfit_id or item_id.');
     }
 
+    const normalizedTransform = this.normalizeTransform(data.transform);
     const outfitItem = this.repo.create({
       ...data,
+      transform: normalizedTransform,
       outfit: { outfit_id } as any,
       item: { item_id } as any,
     });
 
     const saved = await this.repo.save(outfitItem);
-    return { message: 'Outfit item added successfully', outfit_item: saved };
+    const hydrated = await this.repo.findOne({
+      where: { outfit_item_id: saved.outfit_item_id },
+      relations: ['outfit', 'item'],
+    });
+    return {
+      message: 'Outfit item added successfully',
+      outfit_item: this.mapPayload(hydrated ?? saved, { outfit_id, item_id }),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -143,18 +153,36 @@ export class OutfitItemService {
    * Postconditions:
    * - The record is updated with new layout parameters.
    */
-  async update(id: number, updates: UpdateOutfitItemDto) {
+  async update(
+    id: number,
+    updates: UpdateOutfitItemInput,
+  ): Promise<{ message: string; outfit_item: OutfitItemPayload }> {
     const outfitItem = await this.repo.findOne({
       where: { outfit_item_id: id },
     });
     if (!outfitItem) throw new NotFoundException('Outfit item not found.');
 
-    Object.assign(outfitItem, updates);
+    const normalizedTransform = this.normalizeTransform(updates.transform);
+    Object.assign(outfitItem, {
+      ...updates,
+      ...(normalizedTransform !== undefined ? { transform: normalizedTransform } : {}),
+    });
     const updated = await this.repo.save(outfitItem);
+    const hydrated = await this.repo.findOne({
+      where: { outfit_item_id: updated.outfit_item_id },
+      relations: ['outfit', 'item'],
+    });
 
+    const resolvedOutfitId =
+      outfitItem.outfit?.outfit_id ?? (outfitItem as any).outfit_id ?? updates.outfit_id;
+    const resolvedItemId =
+      outfitItem.item?.item_id ?? (outfitItem as any).item_id ?? updates.item_id;
     return {
       message: 'Outfit item updated successfully',
-      outfit_item: updated,
+      outfit_item: this.mapPayload(hydrated ?? updated, {
+        outfit_id: resolvedOutfitId ?? undefined,
+        item_id: resolvedItemId ?? undefined,
+      }),
     };
   }
 
@@ -174,10 +202,47 @@ export class OutfitItemService {
    * Postconditions:
    * - The record is permanently removed from storage.
    */
-  async delete(id: number) {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (result.affected === 0)
       throw new NotFoundException('Outfit item not found.');
     return { message: 'Outfit item deleted successfully' };
+  }
+
+  private mapPayload(
+    outfitItem: OutfitItem,
+    fallback?: { outfit_id?: number; item_id?: number },
+  ): OutfitItemPayload {
+    const fallbackOutfitId = fallback?.outfit_id;
+    const fallbackItemId = fallback?.item_id;
+    return {
+      outfit_item_id: outfitItem.outfit_item_id,
+      outfit_id: outfitItem.outfit?.outfit_id ?? fallbackOutfitId ?? (outfitItem as any).outfit_id,
+      item_id: outfitItem.item?.item_id ?? fallbackItemId ?? (outfitItem as any).item_id,
+      x_position: outfitItem.x_position,
+      y_position: outfitItem.y_position,
+      z_index: outfitItem.z_index,
+      transform: outfitItem.transform ? JSON.stringify(outfitItem.transform) : null,
+      outfit: outfitItem.outfit,
+      item: outfitItem.item,
+    };
+  }
+
+  private normalizeTransform(value?: string | Record<string, any> | null): Record<string, any> | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === 'object' && parsed !== null ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    if (typeof value === 'object') {
+      return value;
+    }
+    return undefined;
   }
 }

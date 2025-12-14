@@ -1,13 +1,4 @@
-/**
- * Entity: ScheduledOutfit
- *
- * Represents a scheduled outfit record, linking a specific outfit
- * to a user and assigning it a scheduled calendar date.
- *
- * Each record indicates when a user plans to wear a particular outfit.
- * This entity supports use cases such as outfit planning, reminders,
- * and scheduling for events or daily look preparation.
- */
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -20,9 +11,11 @@ import { User } from '../user/user.entity';
 import { Outfit } from '../outfit/outfit.entity';
 
 @Entity('scheduled_outfits')
+@ObjectType()
 export class ScheduledOutfit {
   /** Auto-generated unique identifier for the scheduled outfit. */
   @PrimaryGeneratedColumn()
+  @Field(() => Int)
   schedule_id: number;
 
   // ---------------------------------------------------------------------------
@@ -38,6 +31,7 @@ export class ScheduledOutfit {
     nullable: false,
   })
   @JoinColumn({ name: 'outfit_id' })
+  @Field(() => Outfit)
   outfit: Outfit;
 
   /**
@@ -49,6 +43,7 @@ export class ScheduledOutfit {
     nullable: false,
   })
   @JoinColumn({ name: 'user_id' })
+  @Field(() => User)
   user: User;
 
   // ---------------------------------------------------------------------------
@@ -61,6 +56,7 @@ export class ScheduledOutfit {
    * Example: 2025-11-15
    */
   @Column({ type: 'date', name: 'schedule_date', nullable: false })
+  @Field()
   schedule_date: Date;
 
   /**
@@ -68,13 +64,6 @@ export class ScheduledOutfit {
    * Stored with timezone awareness for consistency across regions.
    */
   @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
+  @Field()
   created_at: Date;
 }
-
-/**
- * Preconditions:
- * - The referenced `user` and `outfit` must exist in their respective tables.
- *
- * Postconditions:
- * - A persistent record links the user, outfit, and scheduled date.
- */

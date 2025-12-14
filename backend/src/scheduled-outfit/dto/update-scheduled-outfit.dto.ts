@@ -1,29 +1,17 @@
-/**
- * DTO: UpdateScheduledOutfitDto
- *
- * Defines the payload structure for updating a scheduled outfit entry.
- * Primarily used to modify the date on which an outfit is scheduled.
- *
- * This DTO supports partial updates, allowing only the date field to be changed.
- */
-import { IsDateString, IsOptional } from 'class-validator';
+import { Field, InputType, Int, PartialType } from '@nestjs/graphql';
+import { IsDateString, IsInt, IsOptional } from 'class-validator';
+import { CreateScheduledOutfitInput } from './create-scheduled-outfit.dto';
+import { Type } from 'class-transformer';
 
-export class UpdateScheduledOutfitDto {
-  /**
-   * The new date for the scheduled outfit, formatted in ISO 8601.
-   * This field is optional and may be omitted if no update is required.
-   *
-   * Example: "2025-11-15"
-   */
+@InputType()
+export class UpdateScheduledOutfitInput extends PartialType(CreateScheduledOutfitInput) {
+  @Field(() => Int)
+  @Type(() => Number)
+  @IsInt()
+  schedule_id: number;
+
+  @Field({ nullable: true })
   @IsDateString()
   @IsOptional()
   schedule_date?: string;
 }
-
-/**
- * Preconditions:
- * - If provided, `schedule_date` must be a valid ISO 8601 date string.
- *
- * Postconditions:
- * - The existing scheduled outfit record is updated with the new date.
- */

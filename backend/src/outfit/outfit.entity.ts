@@ -8,16 +8,17 @@
  * This entity is central to user wardrobe management and community features,
  * linking user-generated fashion combinations with social interactions.
  */
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
-  CreateDateColumn,
-  UpdateDateColumn,
-  JoinColumn,
+  PrimaryGeneratedColumn,
   RelationId,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
 import { OutfitItem } from '../outfit-item/outfit-item.entity';
@@ -26,24 +27,27 @@ import { Comment } from '../comments/comment.entity';
 import { Like } from '../like/like.entity';
 
 @Entity('outfits')
+@ObjectType()
 export class Outfit {
   /** Primary key — unique identifier for each outfit. */
   @PrimaryGeneratedColumn()
+  @Field(() => Int)
   outfit_id: number;
 
   /** Optional name assigned by the user (e.g., “Summer Vibes”). */
   @Column({ nullable: true })
+  @Field({ nullable: true })
   name: string;
 
   /** Indicates whether the outfit is visible to other users. */
   @Column({ default: false })
+  @Field()
   is_public: boolean;
 
-  /** URL or Base64-encoded string of the outfit’s cover image. */
-  @Column({ name: 'cover_image_url', type: 'text', nullable: true })
-  cover_image_url?: string | null;
-
-  // ----------- RELATIONS -----------
+ /** URL or Base64-encoded string of the outfit’s cover image. */
+@Column({ name: 'cover_image_url', type: 'text', nullable: true })
+@Field(() => String, { nullable: true })
+cover_image_url?: string;
 
   /**
    * The user who created this outfit.
@@ -54,10 +58,12 @@ export class Outfit {
     nullable: false,
   })
   @JoinColumn({ name: 'user_id' })
+  @Field(() => User)
   user: User;
 
   /** Foreign key referencing the owning user's ID. */
   @RelationId((outfit: Outfit) => outfit.user)
+  @Field(() => Int)
   user_id: number;
 
   /** List of clothing items associated with this outfit. */
@@ -80,9 +86,20 @@ export class Outfit {
 
   /** Date and time when the outfit was created. */
   @CreateDateColumn({ name: 'created_at' })
+  @Field()
   created_at: Date;
 
   /** Date and time when the outfit was last updated. */
   @UpdateDateColumn({ name: 'updated_at' })
+  @Field()
   updated_at: Date;
+
+  @Field(() => Int, { nullable: true })
+  like_count?: number;
+
+  @Field(() => Int, { nullable: true })
+  comment_count?: number;
+
+  @Field({ nullable: true })
+  liked_by_viewer?: boolean;
 }

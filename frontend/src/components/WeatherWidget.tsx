@@ -14,7 +14,7 @@ interface OpenWeatherSummary {
   weather: WeatherDescription[];
 }
 
-const API_KEY = "77de7ec35674a20ad3381a32eae9316c";
+const WEATHER_API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
 const FALLBACK_COORDS = { lat: 33.8938, lon: 35.5018 };
 
 /**
@@ -32,12 +32,18 @@ export default function WeatherWidget() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!WEATHER_API_KEY) {
+      setError("Weather API key is not configured.");
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     const fetchByCoords = async (lat: number, lon: number) => {
       try {
         const response = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`,
+          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_API_KEY}&units=metric`,
         );
         if (!response.ok) {
           throw new Error("Failed to fetch weather");

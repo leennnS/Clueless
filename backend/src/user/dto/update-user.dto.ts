@@ -1,41 +1,29 @@
-/**
- * DTO: UpdateUserDto
- *
- * Defines the structure for updating user profile details.
- * Allows partial updates where only the provided fields are modified.
- */
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEmail } from 'class-validator';
+import { Field, InputType, Int, PartialType } from '@nestjs/graphql';
+import { IsEmail, IsInt, IsOptional, IsString } from 'class-validator';
+import { CreateUserInput } from './create-user.dto';
 
-export class UpdateUserDto {
-  @ApiPropertyOptional({
-    description: 'Updated username of the user',
-    example: 'leen_samadi',
-  })
+@InputType()
+export class UpdateUserInput extends PartialType(CreateUserInput) {
+  @Field(() => Int)
+  @IsInt()
+  id: number;
+
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   username?: string;
 
-  @ApiPropertyOptional({
-    description: 'Updated email address of the user',
-    example: 'leen.new@example.com',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({
-    description: 'New password for the user account',
-    example: 'newsecurepassword123',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   password?: string;
 
-  @ApiPropertyOptional({
-    description: 'Updated profile image (can be a hosted URL or Base64 data URL)',
-    example: 'https://example.com/uploads/profile123.jpg',
-  })
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   profile_image_url?: string;

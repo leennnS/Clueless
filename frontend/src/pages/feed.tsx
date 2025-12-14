@@ -8,17 +8,15 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { useAppSelector } from "../hooks/useAppSelector";
+import { fetchPublicFeedThunk } from "../store/outfits/outfitsSlice";
 import {
-  getPublicFeed,
-  type FeedOutfit,
-  type OutfitUser,
-} from "../services/outfitService";
-import {
-  createComment,
-  getCommentsForOutfit,
-  type CommentRecord,
-} from "../services/commentService";
-import { toggleLike } from "../services/likeService";
+  fetchCommentsByOutfitThunk,
+  createCommentThunk,
+} from "../store/comments/commentsSlice";
+import { toggleLikeThunk } from "../store/likes/likesSlice";
+import type { Comment, Outfit, User } from "../types/models";
 import { feedStyles } from "../styles/feedStyles";
 
 type NoticeType = "info" | "error";
@@ -33,7 +31,7 @@ interface CommentPanelState {
   expanded: boolean;
   loading: boolean;
   error: string | null;
-  comments: CommentRecord[];
+  comments: Comment[];
 }
 
 const heroGradientPalette: [string, string] = ["#f8bbd0", "#c5cae9"];
@@ -58,8 +56,8 @@ const pickGradient = (seed: number, palette: string[][]) => {
   return palette[Math.abs(seed) % palette.length];
 };
 
-const getInitials = (user?: OutfitUser | null) => {
-  const source = user?.name ?? user?.username ?? "";
+const getInitials = (user?: User | null) => {
+  const source = user?.username ?? user?.email ?? "";
   const trimmed = source.trim();
   if (!trimmed) {
     return "??";
@@ -71,15 +69,15 @@ const getInitials = (user?: OutfitUser | null) => {
     .join("");
 };
 
-const resolveUserDisplayName = (user?: OutfitUser | null) => {
+const resolveUserDisplayName = (user?: User | null) => {
   if (!user) return "Anonymous";
-  const name = [user.name, user.username].find(
+  const name = [user.username, user.email].find(
     (value) => value && value.trim().length > 0,
   );
   return name?.trim() ?? "Anonymous";
 };
 
-const resolveUserHandle = (user?: OutfitUser | null) => {
+const resolveUserHandle = (user?: User | null) => {
   if (!user?.username) return "@stylist";
   return `@${user.username}`;
 };
@@ -127,11 +125,13 @@ const createNotice = (() => {
  */
 export default function Feed() {
   const { user, logout } = useAuth();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const viewerId = user?.id ?? null;
+  const viewerId = user?.user_id ?? null;
 
-  const [feed, setFeed] = useState<FeedOutfit[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { feed: feedFromStore, status, error: feedError } = useAppSelector((state) => state.outfits);
+  const [feed, setFeed] = useState<Outfit[]>([]);
+  const loading = status === "loading";
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -148,8 +148,15 @@ export default function Feed() {
 
   const heroGradient = heroGradientPalette;
 
+  useEffect(() => {
+    setFeed(feedFromStore);
+    if (feedError) {
+      setError(feedError);
+    }
+  }, [feedFromStore, feedError]);
+
   const uniqueCreators = useMemo(() => {
-    const registry = new Map<number, OutfitUser>();
+    const registry = new Map<number, User>();
     feed.forEach((entry) => {
       const creator = entry.user;
       if (!creator?.user_id) {
@@ -171,7 +178,6 @@ export default function Feed() {
       .filter((creator) => {
         const candidates = [
           creator.username,
-          creator.name,
           creator.email,
         ].filter(Boolean) as string[];
         return candidates.some((value) =>
@@ -220,23 +226,16 @@ export default function Feed() {
 
   const loadFeed = useCallback(
     async (search?: string) => {
-      setLoading(true);
       setError(null);
       try {
-        const outfits = await getPublicFeed({
-          search,
-          viewerId: viewerId ?? undefined,
-        });
-        setFeed(outfits);
+        await dispatch(fetchPublicFeedThunk({ search, viewerId: viewerId ?? undefined })).unwrap();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unable to load feed.";
         setError(message);
-      } finally {
-        setLoading(false);
       }
     },
-    [viewerId],
+    [dispatch, viewerId],
   );
 
   useEffect(() => {
@@ -304,7 +303,7 @@ export default function Feed() {
     });
 
     try {
-      const comments = await getCommentsForOutfit(outfitId);
+      const comments = await dispatch(fetchCommentsByOutfitThunk(outfitId)).unwrap();
       setCommentPanels((prev) => {
         const current = prev[outfitId];
         if (!current) {
@@ -338,13 +337,15 @@ export default function Feed() {
     }
     setPendingLikes((prev) => ({ ...prev, [outfitId]: true }));
     try {
-      const response = await toggleLike(viewerId, outfitId);
+      const response = await dispatch(
+        toggleLikeThunk({ user_id: viewerId, outfit_id: outfitId })
+      ).unwrap();
       setFeed((prev) =>
         prev.map((outfit) => {
           if (outfit.outfit_id !== outfitId) {
             return outfit;
           }
-          const liked = response.liked;
+          const liked = Boolean(response);
           const likeCount = outfit.like_count ?? 0;
           return {
             ...outfit,
@@ -353,6 +354,8 @@ export default function Feed() {
           };
         }),
       );
+      const trimmedSearch = searchTerm.trim();
+      await loadFeed(trimmedSearch.length > 0 ? trimmedSearch : undefined);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to update like.";
@@ -378,11 +381,9 @@ export default function Feed() {
     }
     setSubmittingComments((prev) => ({ ...prev, [outfitId]: true }));
     try {
-      const comment = await createComment({
-        outfit_id: outfitId,
-        user_id: viewerId,
-        comment_text: trimmed,
-      });
+      const comment = await dispatch(
+        createCommentThunk({ outfit_id: outfitId, user_id: viewerId, content: trimmed })
+      ).unwrap();
       setCommentPanels((prev) => {
         const current = prev[outfitId] ?? {
           expanded: true,
@@ -812,7 +813,7 @@ export default function Feed() {
                             <span>{formatRelativeTime(comment.created_at)}</span>
                           </div>
                           <p style={styles.commentText}>
-                            {comment.comment_text}
+                            {comment.content}
                           </p>
                         </div>
                       ))}

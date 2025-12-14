@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 const CANVAS_WIDTH = 520;
-const CANVAS_HEIGHT = 520;
+const CANVAS_HEIGHT = 640;
 
 export const containerStyle: CSSProperties = {
   minHeight: "100vh",
@@ -11,7 +11,8 @@ export const containerStyle: CSSProperties = {
   boxSizing: "border-box",
   fontFamily: "'Poppins', sans-serif",
   position: "relative",
-  overflow: "hidden",
+  overflowX: "hidden",
+  overflowY: "auto",
 };
 
 export const headerStyle: CSSProperties = {
@@ -184,8 +185,9 @@ export const logoutButtonStyle: CSSProperties = {
 
 export const mainLayoutStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "320px 1fr 280px",
+  gridTemplateColumns: "minmax(300px, 25vw) minmax(540px, 1fr) minmax(300px, 24vw)",
   gap: "24px",
+  alignItems: "start",
 };
 
 export const panelHeaderStyle: CSSProperties = {
@@ -202,16 +204,19 @@ export const inventorySectionStyle: CSSProperties = {
   boxShadow: "0 14px 30px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
-  height: "100%",
+  minHeight: 0,
+  alignSelf: "flex-start",
 };
 
 export const inventoryListStyle: CSSProperties = {
   overflowY: "auto",
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-  gap: "10px",
-  paddingRight: "4px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+  paddingRight: "6px",
   maxHeight: "calc(100vh - 220px)",
+  flex: 1,
+  minHeight: 0,
 };
 
 export const inventoryCardStyle: CSSProperties = {
@@ -225,6 +230,7 @@ export const inventoryCardStyle: CSSProperties = {
   boxShadow: "0 10px 20px rgba(0,0,0,0.08)",
   transition: "transform 0.2s ease, box-shadow 0.2s ease",
   minHeight: "132px",
+  width: "100%",
 };
 
 export const inventoryImageWrapperStyle: CSSProperties = {
@@ -483,6 +489,7 @@ export const canvasSectionStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "stretch",
+  alignSelf: "flex-start",
 };
 
 export const canvasStyle: CSSProperties = {
@@ -628,18 +635,18 @@ export const primaryButtonStyle: CSSProperties = {
 
 export const detailsSectionStyle: CSSProperties = {
   background: "rgba(255,255,255,0.85)",
-  borderRadius: "24px",
-  padding: "22px",
-  boxShadow: "0 14px 30px rgba(0,0,0,0.08)",
+  borderRadius: "20px",
+  padding: "18px",
+  boxShadow: "0 12px 26px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
-  gap: "12px",
+  gap: "10px",
 };
 
 export const detailPreviewWrapperStyle: CSSProperties = {
   width: "100%",
-  height: "200px",
-  borderRadius: "20px",
+  height: "160px",
+  borderRadius: "18px",
   overflow: "hidden",
   background: "rgba(236,64,122,0.12)",
   display: "flex",
@@ -662,6 +669,15 @@ export const detailMetaStyle: CSSProperties = {
   margin: 0,
   fontSize: "0.9rem",
   color: "#5b5b66",
+};
+
+export const sideColumnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "16px",
+  position: "sticky",
+  top: "0px",
+  alignSelf: "flex-start",
 };
 
 export const saveDialogOverlayStyle: CSSProperties = {

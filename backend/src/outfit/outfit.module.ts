@@ -9,26 +9,19 @@
  * Responsibilities:
  * - Registers the `Outfit` entity for database interaction through TypeORM.
  * - Provides the `OutfitService` for business logic and data operations.
- * - Exposes the `OutfitController` for handling REST API endpoints.
+ * - Exposes GraphQL resolver for outfit operations.
  * - Exports both the TypeORM repository and service for reuse in other modules.
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Outfit } from './outfit.entity';
 import { OutfitService } from './outfit.service';
-import { OutfitController } from './outfit.controller';
+import { OutfitResolver } from './outfit.resolver';
 
 @Module({
-  /** Imports the Outfit entity to enable repository injection. */
   imports: [TypeOrmModule.forFeature([Outfit])],
-
-  /** Registers the service responsible for outfit business logic. */
-  providers: [OutfitService],
-
-  /** Exposes REST API endpoints for outfits via the controller. */
-  controllers: [OutfitController],
-
-  /** Makes the service and repository available to other modules. */
+  providers: [OutfitService, OutfitResolver],
+  controllers: [],
   exports: [TypeOrmModule, OutfitService],
 })
 export class OutfitModule {}

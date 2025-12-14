@@ -8,8 +8,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tag } from './tag.entity';
-import { CreateTagDto } from './dto/create-tag.dto';
-import { UpdateTagDto } from './dto/update-tag.dto';
+import { CreateTagInput } from './dto/create-tag.dto';
+import { UpdateTagInput } from './dto/update-tag.dto';
+import { MessagePayload } from '../user/user.types';
 
 @Injectable()
 export class TagsService {
@@ -22,7 +23,7 @@ export class TagsService {
    * Postconditions:
    * - Returns an array of Tag entities, each including the related user.
    */
-  async findAll() {
+  async findAll(): Promise<Tag[]> {
     return this.repo.find({ relations: ['user'] });
   }
 
@@ -38,7 +39,7 @@ export class TagsService {
    * Postconditions:
    * - Returns the tag entity or throws `NotFoundException` if not found.
    */
-  async findOne(id: number) {
+  async findOne(id: number): Promise<Tag> {
     const tag = await this.repo.findOne({
       where: { tag_id: id },
       relations: ['user'],
@@ -59,11 +60,10 @@ export class TagsService {
    * Postconditions:
    * - A new tag is saved in the database and returned.
    */
-  async create(dto: CreateTagDto) {
-    const { name, user_id } = dto;
+  async create(dto: CreateTagInput): Promise<{ message: string; tag: Tag }> {
+    const { name } = dto;
     const tag = this.repo.create({
       name,
-      user: { user_id } as any,
     });
     const saved = await this.repo.save(tag);
     return { message: 'Tag created successfully', tag: saved };
@@ -80,7 +80,7 @@ export class TagsService {
    * - The tag is updated and saved back to the database.
    * - Throws `NotFoundException` if the tag does not exist.
    */
-  async update(id: number, dto: UpdateTagDto) {
+  async update(id: number, dto: UpdateTagInput): Promise<{ message: string; tag: Tag }> {
     const tag = await this.findOne(id);
     Object.assign(tag, dto);
     const updated = await this.repo.save(tag);
@@ -97,7 +97,7 @@ export class TagsService {
    * - Tag is removed from the database if it exists.
    * - Throws `NotFoundException` if no tag matches the given ID.
    */
-  async delete(id: number) {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (!result.affected) throw new NotFoundException('Tag not found');
     return { message: 'Tag deleted successfully' };

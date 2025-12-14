@@ -13,14 +13,13 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduledOutfit } from './scheduled-outfit.entity';
 import { ScheduledOutfitService } from './scheduled-outfit.service';
-import { ScheduledOutfitController } from './scheduled-outfit.controller';
 import { User } from '../user/user.entity';
 import { Outfit } from '../outfit/outfit.entity';
+import { ScheduledOutfitResolver } from './scheduled-outfit.resolver';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ScheduledOutfit, User, Outfit])],
-  providers: [ScheduledOutfitService],
-  controllers: [ScheduledOutfitController],
+  providers: [ScheduledOutfitService, ScheduledOutfitResolver],
 })
 export class ScheduledOutfitModule {}
 

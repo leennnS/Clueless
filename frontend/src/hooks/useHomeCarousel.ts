@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-import type { FeedOutfit, Outfit } from "../services/outfitService";
-import { getOutfitId, getPublicFeed } from "../services/outfitService";
+import { useAppDispatch } from "./useAppDispatch";
+import { useAppSelector } from "./useAppSelector";
+import { fetchPublicFeedThunk } from "../store/outfits/outfitsSlice";
+import type { Outfit } from "../types/models";
 
 type CarouselPosition = "left" | "center" | "right";
 
@@ -23,16 +24,8 @@ export interface CarouselCardData {
   primaryImage: string | null;
 }
 
-const pickFirstString = (
-  ...values: Array<string | null | undefined>
-): string | undefined => {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return undefined;
-};
+const ACCENT_PALETTE = ["#8b4513", "#ec407a", "#42a5f5", "#66bb6a", "#ab47bc", "#ffa726"];
+const EMOJI_PALETTE = ["✨", "💖", "🌟", "🎨", "🧵", "👗"];
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.message) {
@@ -52,25 +45,18 @@ const getErrorMessage = (error: unknown) => {
  * - Auto-advances the `currentOutfitIndex` every 2 seconds while data is available.
  */
 export function useHomeCarousel() {
-  const [outfits, setOutfits] = useState<FeedOutfit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const { feed: outfits, status, error } = useAppSelector((state) => state.outfits);
+  const loading = status === "loading";
   const [currentOutfitIndex, setCurrentOutfitIndex] = useState(0);
   const fetchPublicOutfits = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
-      const data = await getPublicFeed();
-      setOutfits(data);
-      return data;
+      await dispatch(fetchPublicFeedThunk({})).unwrap();
     } catch (err) {
       const message = getErrorMessage(err);
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
+      throw new Error(message);
     }
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     fetchPublicOutfits().catch(() => undefined);
@@ -125,26 +111,19 @@ export function useHomeCarousel() {
   const cards = useMemo<CarouselCardData[]>(() => {
     return displaySlots.map(({ outfit, position, index }) => {
       const isCenter = position === "center";
-      const outfitId = getOutfitId(outfit);
-      const displayName =
-        pickFirstString(outfit?.title, outfit?.name) ?? "Untitled Outfit";
+      const outfitId = outfit?.outfit_id ?? index;
+      const displayName = outfit?.name?.trim() || "Untitled Outfit";
       const displayOwner =
-        pickFirstString(
-          outfit?.username,
-          outfit?.user?.username,
-          outfit?.user?.name
-        ) ?? "Anonymous stylist";
+        outfit?.user?.username?.trim() ||
+        outfit?.user?.email?.trim() ||
+        "Anonymous stylist";
       const accentColor =
-        pickFirstString(outfit?.color ?? undefined) ?? "#8b4513";
-      const emoji = pickFirstString(outfit?.emoji ?? undefined) ?? "";
-      const primaryImage =
-        outfit?.cover_image_url ??
-        (typeof outfit?.image === "string" ? outfit.image : null);
-
-      const cardKey = outfitId != null ? String(outfitId) : `fallback-${index}`;
+        ACCENT_PALETTE[Math.abs(outfitId) % ACCENT_PALETTE.length] ?? ACCENT_PALETTE[0];
+      const emoji = EMOJI_PALETTE[Math.abs(outfitId) % EMOJI_PALETTE.length] ?? "";
+      const primaryImage = outfit?.cover_image_url ?? null;
 
       return {
-        key: cardKey,
+        key: `carousel-${outfitId}`,
         position,
         index,
         isCenter,

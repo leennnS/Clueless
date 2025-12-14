@@ -1,20 +1,16 @@
-/**
- * DTO: CreateScheduledOutfitDto
- *
- * Represents the payload structure required to schedule an outfit
- * for a specific user on a specific date.
- *
- * This DTO ensures that only valid outfit IDs, user IDs, and ISO-formatted
- * schedule dates are accepted by the backend before persisting the record.
- */
-import { IsInt, IsDateString, IsNotEmpty } from 'class-validator';
+import { Field, InputType, Int } from '@nestjs/graphql';
+import { IsDateString, IsInt, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class CreateScheduledOutfitDto {
+@InputType()
+export class CreateScheduledOutfitInput {
   /**
    * The ID of the outfit being scheduled.
    *
    * Example: 12
    */
+  @Field(() => Int)
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   outfit_id: number;
@@ -24,6 +20,8 @@ export class CreateScheduledOutfitDto {
    *
    * Example: 5
    */
+  @Field(() => Int)
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   user_id: number;
@@ -34,16 +32,8 @@ export class CreateScheduledOutfitDto {
    * Must be provided in ISO format (YYYY-MM-DD or full timestamp).
    * Example: "2025-10-29"
    */
+  @Field()
   @IsDateString()
   @IsNotEmpty()
   schedule_date: string;
 }
-
-/**
- * Preconditions:
- * - Both `outfit_id` and `user_id` must reference existing entities.
- * - `schedule_date` must be a valid ISO 8601 date string.
- *
- * Postconditions:
- * - The validated data can safely be persisted as a new scheduled outfit entry.
- */

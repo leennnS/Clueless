@@ -11,28 +11,31 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useClothingItems } from "../hooks/useClothingItems";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { useAppSelector } from "../hooks/useAppSelector";
 import {
-  deleteOutfit,
-  getOutfitsByUser,
-  type Outfit,
-  getOutfitId,
-} from "../services/outfitService";
+  deleteClothingItemThunk,
+} from "../store/clothingItems/clothingItemsSlice";
 import {
-  deleteClothingItem,
-  type ClothingItemRecord,
-} from "../services/clothingItemService";
-import { updateUser } from "../services/authService";
+  fetchUserOutfitsThunk,
+  deleteOutfitThunk,
+} from "../store/outfits/outfitsSlice";
 import {
-  getCreatorLikesInbox,
-  getLikesByUser,
-  type LikeRecord,
-} from "../services/likeService";
+  fetchLikesByUserThunk,
+  fetchLikesForCreatorThunk,
+} from "../store/likes/likesSlice";
 import {
-  getScheduledOutfitsByUser,
-  createScheduledOutfit,
-  deleteScheduledOutfit,
-  type ScheduledOutfitRecord,
-} from "../services/scheduledOutfitService";
+  fetchScheduledOutfitsByUserThunk,
+  createScheduledOutfitThunk,
+  deleteScheduledOutfitThunk,
+} from "../store/scheduledOutfits/scheduledOutfitsSlice";
+import { updateUserProfileThunk, fetchWardrobeSummaryThunk } from "../store/users/usersSlice";
+import type {
+  ClothingItem,
+  Like,
+  Outfit,
+  ScheduledOutfit,
+} from "../types/models";
 import * as profileStyles from "../styles/profileStyles";
 
 interface TagSummary {
@@ -61,6 +64,38 @@ const getDateKey = (value: string) => {
 const LIST_PREVIEW_COUNT = 6;
 const INBOX_PREVIEW_COUNT = 5;
 
+const getOutfitId = (outfit?: Outfit | null) => {
+  if (!outfit) {
+    return null;
+  }
+  return outfit.outfit_id ?? (outfit as { id?: number }).id ?? null;
+};
+
+const resolveErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return fallback;
+};
+
+const sortScheduledOutfits = (entries: ScheduledOutfit[]) =>
+  [...entries].sort((a, b) => {
+    const first = new Date(a.schedule_date).getTime();
+    const second = new Date(b.schedule_date).getTime();
+    if (Number.isNaN(first) || Number.isNaN(second)) {
+      return 0;
+    }
+    return first - second;
+  });
+
 /**
  * Logged-in profile page presenting wardrobe stats, calendar scheduling, inbox, and editing tools.
  *
@@ -74,8 +109,10 @@ export default function Profile() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, applyUserUpdate } = useAuth();
-  const userId = user?.id ?? null;
+  const userId = user?.user_id ?? null;
   const todayKey = useMemo(() => formatLocalDateKey(new Date()), []);
+  const dispatch = useAppDispatch();
+  const { wardrobeSummary } = useAppSelector((state) => state.users);
 
   const {
     items,
@@ -111,7 +148,7 @@ export default function Profile() {
   const [deletingOutfitIds, setDeletingOutfitIds] = useState<Set<number>>(
     () => new Set()
   );
-  const [scheduledOutfits, setScheduledOutfits] = useState<ScheduledOutfitRecord[]>([]);
+  const [scheduledOutfits, setScheduledOutfits] = useState<ScheduledOutfit[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -126,11 +163,11 @@ export default function Profile() {
   const [calendarStatusError, setCalendarStatusError] = useState<string | null>(null);
   const [calendarSubmitting, setCalendarSubmitting] = useState(false);
   const [showOutfitPicker, setShowOutfitPicker] = useState(false);
-  const [previewSchedule, setPreviewSchedule] = useState<ScheduledOutfitRecord | null>(null);
-  const [likedOutfits, setLikedOutfits] = useState<LikeRecord[]>([]);
+  const [previewSchedule, setPreviewSchedule] = useState<ScheduledOutfit | null>(null);
+  const [likedOutfits, setLikedOutfits] = useState<Like[]>([]);
   const [likedLoading, setLikedLoading] = useState(false);
   const [likedError, setLikedError] = useState<string | null>(null);
-  const [creatorInboxLikes, setCreatorInboxLikes] = useState<LikeRecord[]>([]);
+  const [creatorInboxLikes, setCreatorInboxLikes] = useState<Like[]>([]);
   const [creatorInboxLoading, setCreatorInboxLoading] = useState(false);
   const [creatorInboxError, setCreatorInboxError] = useState<string | null>(null);
   const [showAllWardrobe, setShowAllWardrobe] = useState(false);
@@ -138,6 +175,8 @@ export default function Profile() {
   const [showAllLiked, setShowAllLiked] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
   const [showAllInbox, setShowAllInbox] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   useEffect(() => {
     const state = location.state as { openInbox?: boolean } | undefined;
     if (state?.openInbox) {
@@ -164,35 +203,50 @@ export default function Profile() {
     setScheduleLoading(true);
     setScheduleError(null);
     try {
-      const data = await getScheduledOutfitsByUser(userId);
+      const data = await dispatch(fetchScheduledOutfitsByUserThunk(userId)).unwrap();
       setScheduledOutfits(data);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to load scheduled outfits.";
+        resolveErrorMessage(error, "Unable to load scheduled outfits.");
       setScheduleError(message);
     } finally {
       setScheduleLoading(false);
     }
-  }, [userId]);
+  }, [dispatch, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    setSummaryLoading(true);
+    setSummaryError(null);
+    dispatch(fetchWardrobeSummaryThunk(userId))
+      .unwrap()
+      .catch((error: unknown) => {
+        setSummaryError(resolveErrorMessage(error, "Unable to load wardrobe insights."));
+      })
+      .finally(() => {
+        setSummaryLoading(false);
+      });
+  }, [dispatch, userId]);
 
   useEffect(() => {
     if (!userId) {
       navigate("/login", { replace: true });
       return;
     }
+    let isMounted = true;
     setOutfitsLoading(true);
     setOutfitsError(null);
-    getOutfitsByUser(userId)
+    dispatch(fetchUserOutfitsThunk(userId))
+      .unwrap()
       .then((data) => {
-        setOutfits(data);
+        if (isMounted) {
+          setOutfits(data);
+        }
       })
-      .catch((error) => {
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 404) {
-          setOutfits([]);
-          setOutfitsError(null);
+      .catch((error: unknown) => {
+        if (!isMounted) {
           return;
         }
         const message =
@@ -200,9 +254,14 @@ export default function Profile() {
         setOutfitsError(message);
       })
       .finally(() => {
-      setOutfitsLoading(false);
+        if (isMounted) {
+          setOutfitsLoading(false);
+        }
       });
-  }, [navigate, userId]);
+    return () => {
+      isMounted = false;
+    };
+  }, [dispatch, navigate, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -238,11 +297,12 @@ export default function Profile() {
 
     setLikedLoading(true);
     setLikedError(null);
-    getLikesByUser(userId)
+    dispatch(fetchLikesByUserThunk(userId))
+      .unwrap()
       .then((data) => {
         setLikedOutfits(data);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         const message =
           error instanceof Error ? error.message : "Unable to load liked outfits.";
         setLikedError(message);
@@ -253,11 +313,12 @@ export default function Profile() {
 
     setCreatorInboxLoading(true);
     setCreatorInboxError(null);
-    getCreatorLikesInbox(userId)
+    dispatch(fetchLikesForCreatorThunk(userId))
+      .unwrap()
       .then((data) => {
         setCreatorInboxLikes(data);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         const message =
           error instanceof Error
             ? error.message
@@ -267,7 +328,7 @@ export default function Profile() {
       .finally(() => {
         setCreatorInboxLoading(false);
       });
-  }, [userId]);
+  }, [dispatch, userId]);
 
   const stats = useMemo(() => {
     const totalItems = items.length;
@@ -285,6 +346,13 @@ export default function Profile() {
       withImages,
     };
   }, [items, outfits]);
+
+  const heroStats = {
+    totalItems: wardrobeSummary?.total_items ?? stats.totalItems,
+    totalOutfits: wardrobeSummary?.total_outfits ?? stats.totalOutfits,
+    uniqueTags: wardrobeSummary?.top_tags?.length ?? stats.uniqueTags,
+    withImages: stats.withImages,
+  };
 
   const favoriteTags = useMemo<TagSummary[]>(() => {
     const counts = new Map<string, number>();
@@ -311,6 +379,22 @@ export default function Profile() {
     return sortable.slice(0, 4);
   }, [items]);
 
+  const highlightLatestItems =
+    wardrobeSummary?.latest_items && wardrobeSummary.latest_items.length > 0
+      ? wardrobeSummary.latest_items
+      : latestItems;
+
+  const highlightFavoriteTags =
+    wardrobeSummary?.top_tags && wardrobeSummary.top_tags.length > 0
+      ? wardrobeSummary.top_tags.map((entry) => ({
+          name: entry.tag,
+          count: entry.count,
+        }))
+      : favoriteTags;
+
+  const highlightFavoriteColors = wardrobeSummary?.favorite_colors ?? [];
+  const highlightMostWornItem = wardrobeSummary?.most_worn_item ?? null;
+
   const visibleWardrobeItems = showAllWardrobe
     ? items
     : items.slice(0, LIST_PREVIEW_COUNT);
@@ -334,7 +418,7 @@ export default function Profile() {
   }, [user]);
 
   const scheduledByDate = useMemo(() => {
-    const map = new Map<string, ScheduledOutfitRecord>();
+    const map = new Map<string, ScheduledOutfit>();
     for (const entry of scheduledOutfits) {
       const key = getDateKey(entry.schedule_date);
       if (key) {
@@ -438,7 +522,7 @@ export default function Profile() {
         return next;
       });
       try {
-        await deleteClothingItem(itemId);
+        await dispatch(deleteClothingItemThunk(itemId)).unwrap();
         await refetchItems().catch(() => undefined);
         setActionMessage(
           itemName
@@ -459,7 +543,7 @@ export default function Profile() {
         });
       }
     },
-    [refetchItems]
+    [dispatch, refetchItems]
   );
 
   const handleDeleteOutfit = useCallback(
@@ -484,7 +568,7 @@ export default function Profile() {
         return next;
       });
       try {
-        await deleteOutfit(outfitId);
+        await dispatch(deleteOutfitThunk(outfitId)).unwrap();
         setOutfits((prev) =>
           prev.filter((entry) => getOutfitId(entry) !== outfitId)
         );
@@ -518,7 +602,7 @@ export default function Profile() {
         });
       }
     },
-    [previewSchedule]
+    [dispatch, previewSchedule]
   );
 
   const handleEditOutfit = useCallback(
@@ -537,7 +621,7 @@ export default function Profile() {
     [navigate]
   );
 
-  const renderWardrobeCard = (item: ClothingItemRecord) => {
+  const renderWardrobeCard = (item: ClothingItem) => {
     const deleting = deletingClothingItemIds.has(item.item_id);
     return (
       <div key={item.item_id} style={profileStyles.wardrobeCardStyle}>
@@ -588,7 +672,7 @@ export default function Profile() {
   };
 
   const renderOutfitCard = (outfit: Outfit, index: number) => {
-    const cover = outfit.cover_image_url ?? outfit.image ?? null;
+    const cover = outfit.cover_image_url ?? null;
     const key = getOutfitId(outfit) ?? `${outfit.name ?? "outfit"}-${index}`;
     const outfitIdValue = getOutfitId(outfit);
     const isPublic = Boolean(outfit.is_public);
@@ -655,7 +739,7 @@ export default function Profile() {
     );
   };
 
-  const renderLikedOutfitCard = (record: LikeRecord, index: number) => {
+  const renderLikedOutfitCard = (record: Like, index: number) => {
     const outfit = record.outfit;
     if (!outfit?.outfit_id) {
       return null;
@@ -692,7 +776,7 @@ export default function Profile() {
     );
   };
 
-  const renderInboxRow = (record: LikeRecord, index: number) => {
+  const renderInboxRow = (record: Like, index: number) => {
     const liker = record.user;
     const outfit = record.outfit;
     const likedAt = record.created_at
@@ -707,13 +791,15 @@ export default function Profile() {
     return (
       <div key={`inbox-${record.like_id}-${index}`} style={profileStyles.inboxItemStyle}>
         <div style={profileStyles.inboxAvatarStyle}>
-          {(liker?.username ?? liker?.name ?? "Guest").slice(0, 2).toUpperCase()}
+          {(liker?.username ?? liker?.email ?? "Guest")
+            .slice(0, 2)
+            .toUpperCase()}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
           <strong>
             {liker?.username
               ? `@${liker.username}`
-              : liker?.name ?? "Guest stylist"}
+              : liker?.email ?? "Guest stylist"}
           </strong>
           <span style={profileStyles.inboxMetaStyle}>
             liked <em>{outfit?.name ?? "one of your outfits"}</em> &bull; {likedAt}
@@ -803,7 +889,9 @@ export default function Profile() {
         ...(editPassword ? { password: editPassword } : {}),
         ...(profileImageDirty ? { profile_image_url: editProfileImage ?? "" } : {}),
       };
-      const response = await updateUser(userId, payload);
+      const response = await dispatch(
+        updateUserProfileThunk({ id: userId, ...payload })
+      ).unwrap();
       applyUserUpdate(response.user);
       setEditSuccess(response.message ?? "Profile updated successfully.");
       setEditPassword("");
@@ -818,10 +906,10 @@ export default function Profile() {
       const message =
         err instanceof Error ? err.message : "Unable to update profile.";
       setEditError(message);
-  } finally {
-    setEditLoading(false);
-  }
-};
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const handlePrevCalendarMonth = useCallback(() => {
     setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -872,31 +960,38 @@ export default function Profile() {
       setCalendarSubmitting(true);
       setCalendarStatus(null);
       setCalendarStatusError(null);
-      try {
-        const existing = scheduledByDate.get(selectedCalendarDate);
-        if (existing) {
-          await deleteScheduledOutfit(existing.schedule_id);
-        }
-        await createScheduledOutfit({
+    try {
+      const existing = scheduledByDate.get(selectedCalendarDate);
+      if (existing) {
+        await dispatch(deleteScheduledOutfitThunk(existing.schedule_id)).unwrap();
+      }
+      const isoDate = new Date(`${selectedCalendarDate}T00:00:00`).toISOString();
+      const scheduled = await dispatch(
+        createScheduledOutfitThunk({
           outfit_id: outfitId,
           user_id: userId,
-          schedule_date: selectedCalendarDate,
-        });
-        setCalendarStatus("We added a heart to your calendar!");
-        setShowOutfitPicker(false);
-        await loadScheduledOutfits();
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to schedule this outfit.";
-        setCalendarStatusError(message);
-      } finally {
-        setCalendarSubmitting(false);
-      }
+          schedule_date: isoDate,
+        }),
+      ).unwrap();
+      setScheduledOutfits((prev) =>
+        sortScheduledOutfits([
+          ...prev.filter((entry) => entry.schedule_id !== scheduled.schedule_id),
+          scheduled,
+        ]),
+      );
+      setCalendarStatus("We added a heart to your calendar!");
+      setShowOutfitPicker(false);
+      await loadScheduledOutfits();
+    } catch (error) {
+      const message = resolveErrorMessage(error, "Unable to schedule this outfit.");
+      setCalendarStatusError(message);
+    } finally {
+      setCalendarSubmitting(false);
+    }
     },
     [
       calendarOutfitSelection,
+      dispatch,
       loadScheduledOutfits,
       scheduledByDate,
       selectedCalendarDate,
@@ -917,21 +1012,22 @@ export default function Profile() {
     setCalendarStatus(null);
     setCalendarStatusError(null);
     try {
-      await deleteScheduledOutfit(existing.schedule_id);
+      await dispatch(deleteScheduledOutfitThunk(existing.schedule_id)).unwrap();
+      setScheduledOutfits((prev) =>
+        prev.filter((entry) => entry.schedule_id !== existing.schedule_id),
+      );
       setCalendarStatus("Cleared this date!");
       setCalendarOutfitSelection("");
       await loadScheduledOutfits();
       setShowOutfitPicker(false);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to clear this scheduled outfit.";
+        resolveErrorMessage(error, "Unable to clear this scheduled outfit.");
       setCalendarStatusError(message);
     } finally {
       setCalendarSubmitting(false);
     }
-  }, [loadScheduledOutfits, scheduledByDate, selectedCalendarDate]);
+  }, [dispatch, loadScheduledOutfits, scheduledByDate, selectedCalendarDate]);
 
   const handleToggleOutfitPicker = () => {
     if (outfits.length === 0) {
@@ -962,7 +1058,7 @@ export default function Profile() {
     if (!outfit) {
       return null;
     }
-    return outfit.cover_image_url ?? outfit.image ?? null;
+    return outfit.cover_image_url ?? null;
   }, []);
 
   return (
@@ -1156,19 +1252,19 @@ export default function Profile() {
         <div style={profileStyles.heroStatsStyle}>
           <div style={profileStyles.statCardStyle}>
             <span style={profileStyles.statLabelStyle}>Wardrobe items</span>
-            <strong style={profileStyles.statValueStyle}>{stats.totalItems}</strong>
+            <strong style={profileStyles.statValueStyle}>{heroStats.totalItems}</strong>
           </div>
           <div style={profileStyles.statCardStyle}>
             <span style={profileStyles.statLabelStyle}>Published outfits</span>
-            <strong style={profileStyles.statValueStyle}>{stats.totalOutfits}</strong>
+            <strong style={profileStyles.statValueStyle}>{heroStats.totalOutfits}</strong>
           </div>
           <div style={profileStyles.statCardStyle}>
             <span style={profileStyles.statLabelStyle}>Style tags</span>
-            <strong style={profileStyles.statValueStyle}>{stats.uniqueTags}</strong>
+            <strong style={profileStyles.statValueStyle}>{heroStats.uniqueTags}</strong>
           </div>
           <div style={profileStyles.statCardStyle}>
             <span style={profileStyles.statLabelStyle}>Photo-ready fits</span>
-            <strong style={profileStyles.statValueStyle}>{stats.withImages}</strong>
+            <strong style={profileStyles.statValueStyle}>{heroStats.withImages}</strong>
           </div>
         </div>
       </section>
@@ -1512,14 +1608,22 @@ export default function Profile() {
               <p style={profileStyles.panelSubtitleStyle}>
                 A quick glance at your latest additions and go-to style themes.
               </p>
+              {summaryLoading && (
+                <div style={profileStyles.loadingStateStyle}>
+                  Crunching your wardrobe data...
+                </div>
+              )}
+              {summaryError && (
+                <div style={profileStyles.errorBoxStyle}>{summaryError}</div>
+              )}
               <div style={profileStyles.highlightGridStyle}>
                 <div style={profileStyles.highlightCardStyle}>
                   <span style={profileStyles.highlightLabelStyle}>Latest arrivals</span>
                   <div style={profileStyles.latestListStyle}>
-                    {latestItems.length === 0 ? (
+                    {highlightLatestItems.length === 0 ? (
                       <span style={profileStyles.mutedTextStyle}>No items yet. Add your first piece!</span>
                     ) : (
-                      latestItems.map((item) => (
+                      highlightLatestItems.map((item) => (
                         <div key={item.item_id} style={profileStyles.latestItemStyle}>
                           <span
                             style={profileStyles.latestItemBulletStyle}
@@ -1542,12 +1646,12 @@ export default function Profile() {
                 <div style={profileStyles.highlightCardStyle}>
                   <span style={profileStyles.highlightLabelStyle}>Favorite tags</span>
                   <div style={profileStyles.favoriteTagWrapStyle}>
-                    {favoriteTags.length === 0 ? (
+                    {highlightFavoriteTags.length === 0 ? (
                       <span style={profileStyles.mutedTextStyle}>
                         Tag pieces to group your styles faster.
                       </span>
                     ) : (
-                      favoriteTags.map((tag) => (
+                      highlightFavoriteTags.map((tag) => (
                         <span key={tag.name} style={profileStyles.favoriteTagStyle}>
                           {tag.name} <small style={{ opacity: 0.75 }}>x{tag.count}</small>
                         </span>
@@ -1557,6 +1661,64 @@ export default function Profile() {
                   <p style={profileStyles.favoriteTagHintStyle}>
                     Tags help you filter styles in seconds. Add them when uploading pieces.
                   </p>
+                </div>
+                <div style={profileStyles.highlightCardStyle}>
+                  <span style={profileStyles.highlightLabelStyle}>Palette crush</span>
+                  {highlightFavoriteColors.length ? (
+                    <div style={profileStyles.colorChipRowStyle}>
+                      {highlightFavoriteColors.map(({ color, count }) => (
+                        <span key={color} style={profileStyles.colorChipStyle}>
+                          <span
+                            style={{
+                              ...profileStyles.colorSwatchStyle,
+                              backgroundColor: color,
+                            }}
+                          />
+                          {color} - {count}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={profileStyles.mutedTextStyle}>
+                      Add colors to your wardrobe items to surface trends.
+                    </p>
+                  )}
+                </div>
+                <div style={profileStyles.highlightCardStyle}>
+                  <span style={profileStyles.highlightLabelStyle}>Most worn item</span>
+                  {highlightMostWornItem ? (
+                    <div style={profileStyles.mostWornBodyStyle}>
+                      <div style={profileStyles.mostWornImageShellStyle}>
+                        {highlightMostWornItem.image_url ? (
+                          <img
+                            src={highlightMostWornItem.image_url}
+                            alt={highlightMostWornItem.name}
+                            style={profileStyles.mostWornImageStyle}
+                          />
+                        ) : (
+                          <span style={profileStyles.mostWornFallbackStyle}>★</span>
+                        )}
+                      </div>
+                      <div>
+                        <p style={profileStyles.preferenceValueStyle}>
+                          {highlightMostWornItem.name}
+                        </p>
+                        <p style={profileStyles.preferenceMetaStyle}>
+                          {highlightMostWornItem.color ??
+                            highlightMostWornItem.category ??
+                            "Signature piece"}
+                        </p>
+                        <strong style={profileStyles.preferenceHighlightValue}>
+                          {highlightMostWornItem.wear_count} wear
+                          {highlightMostWornItem.wear_count === 1 ? "" : "s"}
+                        </strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={profileStyles.mutedTextStyle}>
+                      Schedule outfits to track your most loved items.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

@@ -14,15 +14,34 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { User } from './user.entity';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateUserInput } from './dto/create-user.dto';
+import { UpdateUserInput } from './dto/update-user.dto';
 import { PasswordResetToken } from './password-reset-token.entity';
+import { LoginInput } from './dto/login.dto';
+import { ForgotPasswordInput } from './dto/forgot-password.dto';
+import { ResetPasswordInput } from './dto/reset-password.dto';
+import {
+  AuthPayload,
+  MessagePayload,
+  PasswordResetRequestPayload,
+  UserPayload,
+  WardrobeSummary,
+  WardrobeColorStat,
+  WardrobeTagStat,
+  WardrobePreviewItem,
+  WardrobePreviewOutfit,
+  WardrobeItemStat,
+} from './user.types';
+import { ClothingItem } from '../clothing-item/clothing-item.entity';
+import { Outfit } from '../outfit/outfit.entity';
+import { OutfitItem } from '../outfit-item/outfit-item.entity';
+import { ScheduledOutfit } from '../scheduled-outfit/scheduled-outfit.entity';
 
 @Injectable()
 export class UserService {
@@ -31,6 +50,14 @@ export class UserService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(PasswordResetToken)
     private readonly resetRepository: Repository<PasswordResetToken>,
+    @InjectRepository(ClothingItem)
+    private readonly clothingItemRepository: Repository<ClothingItem>,
+    @InjectRepository(Outfit)
+    private readonly outfitRepository: Repository<Outfit>,
+    @InjectRepository(OutfitItem)
+    private readonly outfitItemRepository: Repository<OutfitItem>,
+    @InjectRepository(ScheduledOutfit)
+    private readonly scheduledOutfitRepository: Repository<ScheduledOutfit>,
   ) {}
 
   /**
@@ -40,15 +67,12 @@ export class UserService {
    * @postcondition Password hashes are removed before returning the response.
    * @throws {InternalServerErrorException} if retrieval fails.
    */
-  async getAllUsers() {
+  async getAllUsers(): Promise<User[]> {
     try {
       const users = await this.userRepository.find({
         relations: ['clothing_items'],
       });
-      return users.map((user) => {
-        delete user.password_hash;
-        return user;
-      });
+      return users.map((user) => this.sanitizeUser(user));
     } catch {
       throw new InternalServerErrorException('Failed to fetch users.');
     }
@@ -61,14 +85,13 @@ export class UserService {
    * @returns The corresponding user object.
    * @throws {NotFoundException} if user does not exist.
    */
-  async getUserById(id: number) {
+  async getUserById(id: number): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { user_id: id },
       relations: ['clothing_items'],
     });
     if (!user) throw new NotFoundException('User not found.');
-    delete user.password_hash;
-    return user;
+    return this.sanitizeUser(user);
   }
 
   /**
@@ -79,8 +102,8 @@ export class UserService {
    * @throws {ConflictException} if username or email already exists.
    * @throws {BadRequestException} if required fields are missing.
    */
-  async register(dto: CreateUserDto) {
-    const { username, email, password } = dto;
+  async register(input: CreateUserInput): Promise<UserPayload> {
+    const { username, email, password } = input;
 
     if (!username || !email || !password) {
       throw new BadRequestException('Missing required fields.');
@@ -104,12 +127,7 @@ export class UserService {
 
     return {
       message: 'User registered successfully.',
-      user: {
-        id: savedUser.user_id,
-        username: savedUser.username,
-        email: savedUser.email,
-        profile_image_url: savedUser.profile_image_url ?? null,
-      },
+      user: this.sanitizeUser(savedUser),
     };
   }
 
@@ -122,7 +140,8 @@ export class UserService {
    * @throws {UnauthorizedException} if credentials are invalid.
    * @throws {InternalServerErrorException} for unexpected failures.
    */
-  async login(email: string, password: string) {
+  async login(input: LoginInput): Promise<AuthPayload> {
+    const { email, password } = input;
     try {
       const user = await this.userRepository.findOne({
         where: { email },
@@ -131,27 +150,28 @@ export class UserService {
 
       if (!user) throw new UnauthorizedException('Invalid email or password.');
 
-      const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+      const passwordHash = user.password_hash;
+      if (!passwordHash)
+        throw new UnauthorizedException('Invalid email or password.');
+
+      const isPasswordValid = await bcrypt.compare(password, passwordHash);
       if (!isPasswordValid)
         throw new UnauthorizedException('Invalid email or password.');
 
+      const jwtSecret = this.getRequiredEnv('JWT_SECRET');
       const token = jwt.sign(
         { id: user.user_id, email: user.email },
-        process.env.JWT_SECRET || 'SECRET_KEY',
+        jwtSecret,
         { expiresIn: '1h' },
       );
 
       return {
         message: 'Login successful.',
         token,
-        user: {
-          id: user.user_id,
-          username: user.username,
-          email: user.email,
-          profile_image_url: user.profile_image_url ?? null,
-        },
+        user: this.sanitizeUser(user),
       };
     } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
       throw new InternalServerErrorException(
         'Login failed: ' + (error.message || 'Unknown error.'),
       );
@@ -165,7 +185,8 @@ export class UserService {
    * @returns Reset token metadata and (in dev) the verification code.
    * @throws {BadRequestException} if email is missing or invalid.
    */
-  async requestPasswordReset(email: string) {
+  async requestPasswordReset(input: ForgotPasswordInput): Promise<PasswordResetRequestPayload> {
+    const { email } = input;
     if (!email) throw new BadRequestException('Email is required.');
 
     const user = await this.userRepository.findOne({ where: { email } });
@@ -174,8 +195,9 @@ export class UserService {
       return {
         message:
           'If an account exists for that email, a reset code has been sent.',
-        token: randomUUID(),
+        resetToken: randomUUID(),
         emailDelivery: false,
+        email,
       };
     }
 
@@ -198,9 +220,10 @@ export class UserService {
     return {
       message:
         'If an account exists for that email, a reset code has been sent.',
-      token,
+      resetToken: token,
+      email,
       emailDelivery: emailResult.delivered,
-      developmentCode: emailResult.developmentCode,
+      resetCode: emailResult.code,
     };
   }
 
@@ -213,7 +236,8 @@ export class UserService {
    * @returns Confirmation message.
    * @throws {BadRequestException} if token, code, or password are invalid.
    */
-  async resetPassword(token: string, code: string, password: string) {
+  async resetPassword(input: ResetPasswordInput): Promise<MessagePayload> {
+    const { token, code, password } = input;
     if (!token || !code || !password)
       throw new BadRequestException(
         'Token, verification code, and new password are required.',
@@ -255,27 +279,13 @@ export class UserService {
    * @returns Delivery status and (in development) the code itself.
    */
   private async sendPasswordResetEmail(email: string, code: string) {
-    const {
-      SMTP_HOST,
-      SMTP_PORT,
-      SMTP_USER,
-      SMTP_PASS,
-      SMTP_SECURE,
-      SMTP_FROM,
-    } = process.env;
-
-    const host = SMTP_HOST ?? 'smtp.gmail.com';
-    const port = SMTP_PORT ? Number(SMTP_PORT) : 465;
-    const secure =
-      typeof SMTP_SECURE === 'string' ? SMTP_SECURE === 'true' : true;
-    const user = SMTP_USER ?? 'leensamady123@gmail.com';
-    const pass = SMTP_PASS ?? 'kpzdkrwwjunhbrxi';
-    const from = SMTP_FROM ?? user;
-
-    if (!user || !pass) {
-      console.warn('SMTP credentials missing. Password reset code:', code);
-      return { delivered: false, developmentCode: code };
-    }
+    const host = this.getRequiredEnv('SMTP_HOST');
+    const port = this.getRequiredNumberEnv('SMTP_PORT');
+    const secureEnv = process.env.SMTP_SECURE ?? 'true';
+    const secure = secureEnv.toLowerCase() === 'true';
+    const user = this.getRequiredEnv('SMTP_USER');
+    const pass = this.getRequiredEnv('SMTP_PASS');
+    const from = process.env.SMTP_FROM ?? user;
 
     const transporter = nodemailer.createTransport({
       host,
@@ -284,16 +294,55 @@ export class UserService {
       auth: { user, pass },
     });
 
+    const html = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #f7f1ff; padding: 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; box-shadow: 0 12px 30px rgba(142, 90, 198, 0.12); overflow: hidden;">
+          <tr>
+            <td style="background: linear-gradient(135deg, #ff5fa2 0%, #8e5ac6 100%); padding: 32px; text-align: center;">
+              <h1 style="margin: 0; color: #fff; font-size: 24px; letter-spacing: 0.5px;">Virtual Closet</h1>
+              <p style="margin: 8px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">Password Reset Verification</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px;">
+              <p style="margin: 0 0 16px; color: #3a2b4d; font-size: 16px;">Hi there,</p>
+              <p style="margin: 0 0 16px; color: #4b3b63; line-height: 1.6;">
+                We received a request to reset the password for your Virtual Closet account. Use the verification code below to proceed.
+              </p>
+              <div style="margin: 24px 0; text-align: center;">
+                <span style="display: inline-block; padding: 16px 32px; font-size: 28px; font-weight: 700; letter-spacing: 4px; color: #ff5fa2; background: #fff4fa; border-radius: 12px; border: 2px solid #ffb9d7;">
+                  ${code}
+                </span>
+              </div>
+              <p style="margin: 0 0 16px; color: #4b3b63; line-height: 1.6;">
+                This code will expire in <strong>15 minutes</strong>. If you didn’t request a reset, you can ignore this email and your password will remain the same.
+              </p>
+              <p style="margin: 32px 0 0; color: #4b3b63;">
+                With love,<br/>
+                <strong>The Virtual Closet Team</strong>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #faf5ff; padding: 16px; text-align: center; color: #7c6b95; font-size: 12px;">
+              Need help? Reply to this email and we’ll get back to you shortly.
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
     try {
       await transporter.sendMail({
         from,
         to: email,
         subject: 'Virtual Closet • Reset your password',
-        text: `Hi! Your verification code is: ${code}`,
+        text: `Your Virtual Closet verification code is: ${code}. It expires in 15 minutes.`,
+        html,
       });
     } catch (error) {
       console.error('Failed to send password reset email:', error);
-      return { delivered: false, developmentCode: code };
+      return { delivered: false, code };
     }
 
     return { delivered: true };
@@ -307,23 +356,22 @@ export class UserService {
    * @returns Updated user object.
    * @throws {NotFoundException} if user does not exist.
    */
-  async updateProfile(id: number, dto: UpdateUserDto) {
-    const user = await this.userRepository.findOne({ where: { user_id: id } });
+  async updateProfile(input: UpdateUserInput): Promise<UserPayload> {
+    const user = await this.userRepository.findOne({ where: { user_id: input.id } });
     if (!user) throw new NotFoundException('User not found.');
 
-    if (dto.password) user.password_hash = await bcrypt.hash(dto.password, 10);
-    if (dto.username) user.username = dto.username;
-    if (dto.email) user.email = dto.email;
+    if (input.password) user.password_hash = await bcrypt.hash(input.password, 10);
+    if (input.username) user.username = input.username;
+    if (input.email) user.email = input.email;
 
-    if (dto.profile_image_url !== undefined) {
-      const sanitized = dto.profile_image_url?.trim() ?? '';
+    if (input.profile_image_url !== undefined) {
+      const sanitized = input.profile_image_url?.trim() ?? '';
       user.profile_image_url = sanitized.length > 0 ? sanitized : null;
     }
 
     const updated = await this.userRepository.save(user);
-    delete updated.password_hash;
 
-    return { message: 'Profile updated successfully.', user: updated };
+    return { message: 'Profile updated successfully.', user: this.sanitizeUser(updated) };
   }
 
   /**
@@ -333,7 +381,7 @@ export class UserService {
    * @returns Confirmation message.
    * @throws {NotFoundException} if user does not exist.
    */
-  async deleteUser(id: number) {
+  async deleteUser(id: number): Promise<MessagePayload> {
     const result = await this.userRepository.delete(id);
     if (result.affected === 0)
       throw new NotFoundException('User not found.');
@@ -341,12 +389,193 @@ export class UserService {
   }
 
   /**
-   * Retrieve a basic wardrobe summary placeholder for future extensions.
+   * Generate wardrobe insights for the profile dashboard.
    *
-   * @param user_id - User ID to generate summary for.
-   * @returns Default summary structure.
+   * Aggregates wardrobe totals, latest uploads, color preferences,
+   * tag popularity, and calendar-based wear counts.
    */
-  async getWardrobeSummary(user_id: number) {
-    return { user_id, total_items: 0, total_outfits: 0, favorites: [] };
+  async getWardrobeSummary(user_id: number): Promise<WardrobeSummary> {
+    const [items, outfits, scheduledLooks] = await Promise.all([
+      this.clothingItemRepository.find({
+        where: { user: { user_id } },
+        relations: ['clothing_item_tags', 'clothing_item_tags.tag'],
+        order: { updated_at: 'DESC' },
+      }),
+      this.outfitRepository.find({
+        where: { user: { user_id } },
+        order: { updated_at: 'DESC' },
+      }),
+      this.scheduledOutfitRepository.find({
+        where: { user: { user_id } },
+        relations: ['outfit'],
+      }),
+    ]);
+
+    const totalItems = items.length;
+    const totalOutfits = outfits.length;
+
+    const latestItems: WardrobePreviewItem[] = items.slice(0, 6).map((item) => ({
+      item_id: item.item_id,
+      name: item.name,
+      category: item.category,
+      color: item.color ?? null,
+      image_url: item.image_url ?? null,
+    }));
+
+    const latestOutfits: WardrobePreviewOutfit[] = outfits.slice(0, 6).map((outfit) => ({
+      outfit_id: outfit.outfit_id,
+      name: outfit.name,
+      cover_image_url: outfit.cover_image_url ?? null,
+      is_public: outfit.is_public ?? false,
+    }));
+
+    const favoriteColors = this.buildColorStats(items);
+    const topTags = this.buildTagStats(items);
+    const favorites = topTags.map((entry) => entry.tag);
+
+    const mostWornItem = await this.resolveMostWornItem(scheduledLooks);
+
+    return {
+      user_id,
+      total_items: totalItems,
+      total_outfits: totalOutfits,
+      favorites,
+      latest_items: latestItems,
+      latest_outfits: latestOutfits,
+      favorite_colors: favoriteColors,
+      top_tags: topTags,
+      most_worn_item: mostWornItem,
+    };
+  }
+
+  private buildColorStats(items: ClothingItem[]): WardrobeColorStat[] {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      const color = item.color?.trim();
+      if (!color) continue;
+      const normalized = color.toLowerCase();
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([normalized, count]) => ({
+        color: this.capitalizeWord(normalized),
+        count,
+      }));
+  }
+
+  private buildTagStats(items: ClothingItem[]): WardrobeTagStat[] {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const link of item.clothing_item_tags ?? []) {
+        const tagName = link?.tag?.name?.trim();
+        if (!tagName) continue;
+        const normalized = tagName.toLowerCase();
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+      }
+    }
+
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([normalized, count]) => ({
+        tag: this.capitalizeWord(normalized),
+        count,
+      }));
+  }
+
+  private async resolveMostWornItem(
+    scheduledLooks: ScheduledOutfit[],
+  ): Promise<WardrobeItemStat | null> {
+    if (!scheduledLooks.length) {
+      return null;
+    }
+
+    const outfitWearCounts = new Map<number, number>();
+    for (const entry of scheduledLooks) {
+      const outfitId =
+        entry.outfit?.outfit_id ?? (entry as unknown as { outfit_id?: number }).outfit_id;
+      if (!outfitId) {
+        continue;
+      }
+      outfitWearCounts.set(outfitId, (outfitWearCounts.get(outfitId) ?? 0) + 1);
+    }
+
+    if (!outfitWearCounts.size) {
+      return null;
+    }
+
+    const outfitItems = await this.outfitItemRepository.find({
+      where: { outfit: { outfit_id: In(Array.from(outfitWearCounts.keys())) } },
+      relations: ['item', 'outfit'],
+    });
+
+    const itemCounts = new Map<number, { item: ClothingItem; count: number }>();
+    for (const link of outfitItems) {
+      const outfitId = link.outfit?.outfit_id;
+      const wearerCount = outfitId ? outfitWearCounts.get(outfitId) ?? 0 : 0;
+      if (!wearerCount || !link.item) {
+        continue;
+      }
+      const current = itemCounts.get(link.item.item_id) ?? {
+        item: link.item,
+        count: 0,
+      };
+      current.count += wearerCount;
+      itemCounts.set(link.item.item_id, current);
+    }
+
+    if (!itemCounts.size) {
+      return null;
+    }
+
+    const [itemId, data] = Array.from(itemCounts.entries()).sort(
+      (a, b) => b[1].count - a[1].count,
+    )[0];
+
+    return {
+      item_id: itemId,
+      name: data.item.name,
+      category: data.item.category,
+      color: data.item.color ?? null,
+      image_url: data.item.image_url ?? null,
+      wear_count: data.count,
+    };
+  }
+
+  private capitalizeWord(value: string): string {
+    if (!value) {
+      return value;
+    }
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  private sanitizeUser(user: User): User {
+    const cloned = { ...user };
+    delete cloned.password_hash;
+    return cloned as User;
+  }
+
+  private getRequiredEnv(name: string) {
+    const value = process.env[name];
+    if (!value) {
+      throw new InternalServerErrorException(
+        `${name} environment variable is not configured.`,
+      );
+    }
+    return value;
+  }
+
+  private getRequiredNumberEnv(name: string) {
+    const raw = this.getRequiredEnv(name);
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed)) {
+      throw new InternalServerErrorException(
+        `${name} environment variable must be a valid number.`,
+      );
+    }
+    return parsed;
   }
 }

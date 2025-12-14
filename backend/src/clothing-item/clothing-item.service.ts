@@ -27,11 +27,7 @@
  * - Uploaded images are stored under `/public/images/uploads/`.
  */
 
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { promises as fs } from 'fs';
@@ -40,52 +36,22 @@ import { randomUUID } from 'crypto';
 import { ClothingItem } from './clothing-item.entity';
 import { ClothingItemTag } from '../clothing-item-tag/clothing-item-tag.entity';
 import { Tag } from '../tag/tag.entity';
-import { CreateClothingItemDto } from './dto/create-clothing-item.dto';
-import { UpdateClothingItemDto } from './dto/update-clothing-item.dto';
+import { CreateClothingItemInput } from './dto/create-clothing-item.dto';
+import { UpdateClothingItemInput } from './dto/update-clothing-item.dto';
 import { User } from '../user/user.entity';
+import {
+  BasicUserSummary,
+  ClothingItemPayload,
+  TagSummary,
+} from './clothing-item.types';
+import { MessagePayload } from '../user/user.types';
 
 export type ClothingItemWithTags = ClothingItem & {
   clothing_item_tags?: ClothingItemTag[];
   user?: User;
 };
 
-export interface TagSummary {
-  tag_id: number;
-  name: string;
-}
-
-export interface ClothingItemResponse {
-  item_id: number;
-  name: string;
-  category: string;
-  color?: string | null;
-  image_url?: string | null;
-  uploaded_at: Date;
-  updated_at: Date;
-  user?: {
-    user_id: number;
-    username?: string | null;
-    email?: string | null;
-  };
-  tags: TagSummary[];
-}
-
 const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'images', 'uploads');
-const PRESET_TAG_NAMES = [
-  'summer',
-  'winter',
-  'spring',
-  'autumn',
-  'rainy',
-  'cold',
-  'warm',
-  'layered',
-  'lightweight',
-] as const;
-const PRESET_TAG_NAME_SET = new Set(
-  PRESET_TAG_NAMES.map((name) => name.toLowerCase()),
-);
-
 @Injectable()
 export class ClothingItemService {
   constructor(
@@ -144,7 +110,7 @@ export class ClothingItemService {
    * Maps a ClothingItem entity and its relationships to a response DTO.
    * Converts tag entities into a simplified `TagSummary` array.
    */
-  private mapWithTags(item: ClothingItemWithTags): ClothingItemResponse {
+  private mapWithTags(item: ClothingItemWithTags): ClothingItemPayload {
     const user = item.user;
     const tags: TagSummary[] =
       item.clothing_item_tags
@@ -155,21 +121,25 @@ export class ClothingItemService {
           name: tag.name,
         })) ?? [];
 
+    const userSummary: BasicUserSummary | undefined = user
+      ? {
+          user_id: user.user_id,
+          username: user.username,
+          email: user.email,
+          profile_image_url: user.profile_image_url,
+        }
+      : undefined;
+
     return {
       item_id: item.item_id,
+      user_id: item.user?.user_id ?? (item as any).user_id,
       name: item.name,
       category: item.category,
       color: item.color,
       image_url: item.image_url,
       uploaded_at: item.uploaded_at,
       updated_at: item.updated_at,
-      user: user
-        ? {
-            user_id: user.user_id,
-            username: user.username,
-            email: user.email,
-          }
-        : undefined,
+      user: userSummary,
       tags,
     };
   }
@@ -182,7 +152,7 @@ export class ClothingItemService {
    * Retrieves all clothing items with user and tag relations.
    * @returns Array of clothing items.
    */
-  async getAll(): Promise<ClothingItemResponse[]> {
+  async getAll(): Promise<ClothingItemPayload[]> {
     const items = await this.repo.find({
       relations: ['user', 'clothing_item_tags', 'clothing_item_tags.tag'],
     });
@@ -193,7 +163,7 @@ export class ClothingItemService {
    * Retrieves a clothing item by its unique ID.
    * @throws NotFoundException if no item is found.
    */
-  async getById(id: number): Promise<ClothingItemResponse> {
+  async getById(id: number): Promise<ClothingItemPayload> {
     const item = await this.repo.findOne({
       where: { item_id: id },
       relations: ['user', 'clothing_item_tags', 'clothing_item_tags.tag'],
@@ -206,13 +176,14 @@ export class ClothingItemService {
    * Retrieves all clothing items belonging to a specific user.
    * @throws NotFoundException if the user has no items.
    */
-  async getByUser(user_id: number): Promise<ClothingItemResponse[]> {
+  async getByUser(user_id: number): Promise<ClothingItemPayload[]> {
     const items = await this.repo.find({
       where: { user: { user_id } },
       relations: ['user', 'clothing_item_tags', 'clothing_item_tags.tag'],
     });
-    if (!items.length)
-      throw new NotFoundException('No clothing items found for this user.');
+    if (!items.length) {
+      return [];
+    }
     return items.map((item) => this.mapWithTags(item));
   }
 
@@ -236,8 +207,8 @@ export class ClothingItemService {
    * - Uploaded image is saved and referenced by URL.
    */
   async create(
-    dto: CreateClothingItemDto,
-  ): Promise<{ message: string; item: ClothingItemResponse }> {
+    dto: CreateClothingItemInput,
+  ): Promise<{ message: string; item: ClothingItemPayload }> {
     const { name, category, user_id, image_url, color, tag_ids, tag_names } =
       dto;
 
@@ -276,18 +247,11 @@ export class ClothingItemService {
 
     // Handle tag validation and creation
     if (normalizedTagNames.length > 0) {
-      for (const normalized of normalizedTagNames) {
-        if (!PRESET_TAG_NAME_SET.has(normalized)) {
-          throw new BadRequestException(
-            'One or more selected tags are not allowed.',
-          );
-        }
-      }
-
       const existingTags = await this.tagRepo
         .createQueryBuilder('tag')
+        .innerJoin('tag.user', 'user')
         .where('LOWER(tag.name) IN (:...names)', { names: normalizedTagNames })
-        .andWhere('tag.user_id = :userId', { userId: user_id })
+        .andWhere('user.user_id = :userId', { userId: user_id })
         .getMany();
 
       const existingLookup = new Set(
@@ -295,13 +259,15 @@ export class ClothingItemService {
       );
 
       const tagsToCreate = normalizedTagNames
-        .filter((name) => !existingLookup.has(name))
-        .map((name) =>
-          this.tagRepo.create({
-            name: tagLabelMap.get(name) ?? name,
-            user: { user_id } as any,
-          }),
-        );
+  .filter((name) => !existingLookup.has(name))
+  .map((name) =>
+    this.tagRepo.create({
+      // force lowercase storage
+      name: (tagLabelMap.get(name) ?? name).toLowerCase(),
+      user: { user_id } as any,
+    }),
+  );
+
 
       const createdTags = tagsToCreate.length
         ? await this.tagRepo.save(tagsToCreate)
@@ -400,8 +366,8 @@ export class ClothingItemService {
    */
   async update(
     id: number,
-    dto: UpdateClothingItemDto,
-  ): Promise<{ message: string; item: ClothingItemResponse }> {
+    dto: UpdateClothingItemInput,
+  ): Promise<{ message: string; item: ClothingItemPayload }> {
     const item = await this.repo.findOne({ where: { item_id: id } });
     if (!item) throw new NotFoundException('Clothing item not found.');
 
@@ -449,7 +415,7 @@ export class ClothingItemService {
    * 🔹 Postconditions:
    * - The record is permanently removed from the database.
    */
-  async delete(id: number) {
+  async delete(id: number): Promise<MessagePayload> {
     const result = await this.repo.delete(id);
     if (result.affected === 0)
       throw new NotFoundException('Clothing item not found.');

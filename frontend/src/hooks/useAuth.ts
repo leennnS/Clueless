@@ -1,77 +1,38 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useAppDispatch } from "./useAppDispatch";
+import { useAppSelector } from "./useAppSelector";
 import {
-  login as loginRequest,
-  register as registerRequest,
-  persistAuth,
-  clearPersistedAuth,
-  loadPersistedAuth,
-  persistUpdatedUser,
-  type AuthUser,
-  type LoginPayload,
-  type RegisterPayload,
-  type RegisterResponse,
-  type LoginResponse,
-} from "../services/authService";
+  clearStatus as clearStatusAction,
+  loginThunk,
+  logout as logoutAction,
+  meThunk,
+  registerThunk,
+  setUser,
+} from "../store/auth/authSlice";
+import type { User } from "../types/models";
 
-interface ErrorResponsePayload {
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
+export interface LoginPayload {
+  email: string;
+  password: string;
 }
 
-/**
- * Safely attempts to pull a backend-provided message from an Axios error chain.
- * @param error arbitrary caught error
- * @returns parsed message string or null if nothing useful was found
- */
-const readResponseMessage = (error: unknown): string | null => {
-  if (typeof error !== "object" || error === null) {
-    return null;
-  }
-
-  const response = (error as ErrorResponsePayload).response;
-  if (typeof response !== "object" || response === null) {
-    return null;
-  }
-
-  const data = response.data;
-  if (typeof data !== "object" || data === null) {
-    return null;
-  }
-
-  const message = (data as { message?: unknown }).message;
-  return typeof message === "string" ? message : null;
-};
-
-/**
- * Normalizes any thrown error into a human-friendly string suitable for toasts.
- */
-const resolveErrorMessage = (error: unknown) => {
-  const responseMessage = readResponseMessage(error);
-  if (responseMessage) {
-    return responseMessage;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return "Something went wrong. Please try again.";
-};
+export interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+}
 
 interface UseAuthResult {
-  user: AuthUser | null;
+  user: User | null;
   token: string | null;
   loading: boolean;
   error: string | null;
   success: string | null;
-  login: (payload: LoginPayload) => Promise<LoginResponse>;
-  register: (payload: RegisterPayload) => Promise<RegisterResponse>;
+  login: (payload: LoginPayload) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
   clearStatus: () => void;
-  applyUserUpdate: (user: AuthUser) => void;
+  applyUserUpdate: (user: User) => void;
 }
 
 /**
@@ -87,73 +48,40 @@ interface UseAuthResult {
  * - Persists auth tokens in localStorage and ensures Axios headers stay in sync.
  */
 export function useAuth(): UseAuthResult {
-  const { user: initialUser, token: initialToken } = loadPersistedAuth();
-  const [user, setUser] = useState<AuthUser | null>(initialUser);
-  const [token, setToken] = useState<string | null>(initialToken);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const { user, token, status, error, success } = useAppSelector((state) => state.auth);
 
   const login = useCallback(async (payload: LoginPayload) => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await loginRequest(payload);
-      persistAuth(response);
-      setUser(response.user);
-      setToken(response.token);
-      setSuccess(response.message ?? "Login successful!");
-      return response;
-    } catch (err) {
-      const message = resolveErrorMessage(err);
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await dispatch(loginThunk(payload)).unwrap();
+    await dispatch(meThunk()).unwrap().catch(() => undefined);
+  }, [dispatch]);
 
   const register = useCallback(async (payload: RegisterPayload) => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await registerRequest(payload);
-      setSuccess(response.message ?? "Registration successful!");
-      return response;
-    } catch (err) {
-      const message = resolveErrorMessage(err);
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await dispatch(registerThunk(payload)).unwrap();
+    await dispatch(loginThunk({ email: payload.email, password: payload.password })).unwrap();
+    await dispatch(meThunk()).unwrap().catch(() => undefined);
+  }, [dispatch]);
 
   const logout = useCallback(() => {
-    clearPersistedAuth();
-    setUser(null);
-    setToken(null);
-  }, []);
+    dispatch(logoutAction());
+  }, [dispatch]);
 
   const clearStatus = useCallback(() => {
-    setError(null);
-    setSuccess(null);
-  }, []);
+    dispatch(clearStatusAction());
+  }, [dispatch]);
 
-  const applyUserUpdate = useCallback((updatedUser: AuthUser) => {
-    setUser(updatedUser);
-    persistUpdatedUser(updatedUser);
-  }, []);
+  const applyUserUpdate = useCallback(
+    (updatedUser: User) => {
+      dispatch(setUser(updatedUser));
+    },
+    [dispatch]
+  );
 
   return useMemo(
     () => ({
       user,
       token,
-      loading,
+      loading: status === "loading",
       error,
       success,
       login,
@@ -162,6 +90,6 @@ export function useAuth(): UseAuthResult {
       clearStatus,
       applyUserUpdate,
     }),
-    [user, token, loading, error, success, login, register, logout, clearStatus, applyUserUpdate]
+    [user, token, status, error, success, login, register, logout, clearStatus, applyUserUpdate]
   );
 }

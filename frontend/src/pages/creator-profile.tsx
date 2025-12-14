@@ -1,16 +1,10 @@
-import { isAxiosError } from "axios";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { ClothingItemRecord } from "../services/clothingItemService";
-import {
-  getOutfitsByUser,
-  type Outfit,
-} from "../services/outfitService";
-import {
-  getPublicUserProfile,
-  type PublicUserProfile,
-} from "../services/authService";
 import { useAuth } from "../hooks/useAuth";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { fetchCreatorProfileThunk } from "../store/users/usersSlice";
+import { fetchUserOutfitsThunk } from "../store/outfits/outfitsSlice";
+import type { ClothingItem, Outfit, User } from "../types/models";
 import { creatorProfileStyles } from "../styles/creatorProfileStyles";
 
 const API_BASE_URL =
@@ -33,17 +27,17 @@ const pageStyles = creatorProfileStyles;
 
 
 
-const getDisplayName = (profile?: PublicUserProfile | null) => {
+const getDisplayName = (profile?: User | null) => {
   if (!profile) return "Stylist";
   return profile.username || profile.email || "Stylist";
 };
 
-const getHandle = (profile?: PublicUserProfile | null) => {
+const getHandle = (profile?: User | null) => {
   if (!profile?.username) return "";
   return `@${profile.username}`;
 };
 
-const getInitials = (profile?: PublicUserProfile | null) => {
+const getInitials = (profile?: User | null) => {
   const source = profile?.username ?? profile?.email ?? "";
   const trimmed = source.trim();
   if (!trimmed) return "SC";
@@ -80,6 +74,7 @@ export default function CreatorProfile() {
   const navigate = useNavigate();
   const { userId: userIdParam } = useParams<{ userId: string }>();
   const { user: viewer, logout } = useAuth();
+  const dispatch = useAppDispatch();
 
   const creatorId = useMemo(() => {
     if (!userIdParam) return null;
@@ -87,7 +82,7 @@ export default function CreatorProfile() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [userIdParam]);
 
-  const [profile, setProfile] = useState<PublicUserProfile | null>(null);
+  const [profile, setProfile] = useState<User | null>(null);
   const [publicOutfits, setPublicOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,16 +121,13 @@ export default function CreatorProfile() {
       setError(null);
       try {
         const [profileResponse, outfitsResponse] = await Promise.all([
-          getPublicUserProfile(creatorId),
-          getOutfitsByUser(creatorId).catch((err) => {
-            if (isAxiosError(err) && err.response?.status === 404) {
-              return [];
-            }
-            throw err;
-          }),
+          dispatch(fetchCreatorProfileThunk(creatorId)).unwrap(),
+          dispatch(fetchUserOutfitsThunk(creatorId)).unwrap().catch(() => []),
         ]);
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         const safeOutfits = (outfitsResponse ?? []).filter(
           (outfit) => outfit.is_public === true,
@@ -144,7 +136,9 @@ export default function CreatorProfile() {
         setProfile(profileResponse);
         setPublicOutfits(safeOutfits);
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const message =
           err instanceof Error ? err.message : "Unable to load creator profile.";
         setError(message);
@@ -160,9 +154,9 @@ export default function CreatorProfile() {
     return () => {
       cancelled = true;
     };
-  }, [creatorId]);
+  }, [creatorId, dispatch]);
 
-  const wardrobeShowcase = useMemo<ClothingItemRecord[]>(() => {
+  const wardrobeShowcase = useMemo<ClothingItem[]>(() => {
     return (profile?.clothing_items ?? []).slice(0, 6);
   }, [profile]);
 
@@ -318,11 +312,11 @@ export default function CreatorProfile() {
             </div>
           ) : (
             <div style={pageStyles.outfitGrid}>
-              {publicOutfits.map((outfit) => {
+              {publicOutfits.map((outfit, index) => {
                 const coverUrl = toAbsoluteImageUrl(outfit.cover_image_url);
                 return (
                   <div
-                    key={outfit.outfit_id ?? outfit.id}
+                    key={outfit.outfit_id ?? `outfit-${index}`}
                     style={pageStyles.outfitCard}
                   >
                     {coverUrl ? (

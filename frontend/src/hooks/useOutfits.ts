@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getOutfits } from "../services/outfitService";
-import type { Outfit } from "../services/outfitService";
+import { useCallback, useEffect, useMemo } from "react";
+import { useAppDispatch } from "./useAppDispatch";
+import { useAppSelector } from "./useAppSelector";
+import { fetchOutfitsThunk } from "../store/outfits/outfitsSlice";
+import type { Outfit } from "../types/models";
 
 interface UseOutfitsResult {
   outfits: Outfit[];
@@ -28,63 +30,31 @@ const getErrorMessage = (error: unknown) => {
  * - Handles subscription cleanup to avoid state updates after unmount.
  */
 export function useOutfits(): UseOutfitsResult {
-  const [outfits, setOutfits] = useState<Outfit[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const { data: outfits, status, error } = useAppSelector((state) => state.outfits);
 
   const fetchOutfits = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
     try {
-      const data = await getOutfits();
-      setOutfits(data);
+      const data = await dispatch(fetchOutfitsThunk()).unwrap();
       return data;
     } catch (err) {
       const message = getErrorMessage(err);
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
+      throw new Error(message);
     }
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
-    let isSubscribed = true;
-
-    const loadOutfits = async () => {
-      try {
-        const data = await getOutfits();
-        if (isSubscribed) {
-          setOutfits(data);
-          setError(null);
-        }
-      } catch (err) {
-        if (isSubscribed) {
-          setError(getErrorMessage(err));
-        }
-      } finally {
-        if (isSubscribed) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadOutfits();
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, []);
+    dispatch(fetchOutfitsThunk()).catch(() => undefined);
+  }, [dispatch]);
 
   const result = useMemo(
     () => ({
       outfits,
-      loading,
+      loading: status === "loading",
       error,
       refetch: fetchOutfits,
     }),
-    [outfits, loading, error, fetchOutfits]
+    [outfits, status, error, fetchOutfits]
   );
 
   return result;

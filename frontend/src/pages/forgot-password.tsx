@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
+import { useAppDispatch } from "../hooks/useAppDispatch";
 import {
-  requestPasswordReset,
-  resetPassword,
-} from "../services/authService";
+  requestPasswordResetThunk,
+  resetPasswordThunk,
+} from "../store/auth/authSlice";
 import {
   devCodeStyle,
   errorBannerStyle,
@@ -33,6 +34,7 @@ type Step = "request" | "verify" | "success";
  */
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [step, setStep] = useState<Step>("request");
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
@@ -52,15 +54,13 @@ export default function ForgotPassword() {
     setDevelopmentCode(null);
 
     try {
-      const response = await requestPasswordReset({ email });
-      setToken(response.token);
-      if (response.developmentCode) {
-        setDevelopmentCode(response.developmentCode);
+      const response = await dispatch(requestPasswordResetThunk({ email })).unwrap();
+      setToken(response.resetToken ?? "");
+      if (response.resetCode) {
+        setDevelopmentCode(response.resetCode);
       }
       setInfo(
-        response.emailDelivery
-          ? "A verification code has been sent to your inbox. It expires in 15 minutes."
-          : "Email delivery is not configured. Use the code shown below to continue.",
+        "If email delivery is configured, a verification code has been sent to your inbox. Otherwise, use the code shown below.",
       );
       setStep("verify");
     } catch (err) {
@@ -91,7 +91,7 @@ export default function ForgotPassword() {
     setError(null);
 
     try {
-      await resetPassword({ token, code, password });
+      await dispatch(resetPasswordThunk({ token, code, password })).unwrap();
       setInfo("Password updated successfully. You can now sign in.");
       setStep("success");
     } catch (err) {

@@ -8,59 +8,37 @@
  * This class is validated automatically via class-validator and annotated
  * for Swagger API documentation.
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsObject } from 'class-validator';
+import { Field, InputType, Int } from '@nestjs/graphql';
+import { IsInt, IsOptional } from 'class-validator';
 
-export class CreateOutfitItemDto {
-  @ApiProperty({
-    example: 3,
-    description: 'Unique ID of the outfit this item belongs to.',
-  })
+@InputType()
+export class CreateOutfitItemInput {
+  @Field(() => Int)
   @IsInt()
   outfit_id: number;
 
-  @ApiProperty({
-    example: 7,
-    description: 'Unique ID of the clothing item being added to the outfit.',
-  })
+  @Field(() => Int)
   @IsInt()
   item_id: number;
 
-  @ApiProperty({
-    example: 120,
-    required: false,
-    description: 'Horizontal (X-axis) position on the outfit canvas.',
-  })
+  @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()
   x_position?: number;
 
-  @ApiProperty({
-    example: 250,
-    required: false,
-    description: 'Vertical (Y-axis) position on the outfit canvas.',
-  })
+  @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()
   y_position?: number;
 
-  @ApiProperty({
-    example: 2,
-    required: false,
-    description: 'Z-index layer order that defines visual stacking.',
-  })
+  @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()
   z_index?: number;
 
-  @ApiProperty({
-    example: { scale: 1.1, rotation: 15 },
-    required: false,
-    description: 'Optional object describing transformations (scale, rotation, etc.).',
-  })
+  @Field(() => String, { nullable: true })
   @IsOptional()
-  @IsObject()
-  transform?: Record<string, any>;
+  transform?: string;
 }
 
 /**

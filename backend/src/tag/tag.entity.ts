@@ -1,59 +1,59 @@
-/**
- * Entity: Tag
- *
- * Represents a user-defined label for organizing and categorizing clothing items.
- * Each tag belongs to a specific user and may be linked to multiple clothing items.
- */
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
   ManyToOne,
   OneToMany,
-  JoinColumn,
-  CreateDateColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../user/user.entity';
 import { ClothingItemTag } from '../clothing-item-tag/clothing-item-tag.entity';
+import { Outfit } from '../outfit/outfit.entity';
+import { OutfitItem } from '../outfit-item/outfit-item.entity';
+import { Comment } from '../comments/comment.entity';
+import { Like } from '../like/like.entity';
 
+@Index(['name', 'user'], { unique: true })
 @Entity('tags')
+@ObjectType()
 export class Tag {
-  /** Unique identifier for the tag. */
   @PrimaryGeneratedColumn()
+  @Field(() => Int)
   tag_id: number;
 
-  /** The display name of the tag (e.g., “Summer”, “Formal”, “Streetwear”). */
   @Column()
+  @Field()
   name: string;
 
-  /**
-   * The user who owns this tag.
-   * A tag is always associated with a single user.
-   * Deleting the user cascades and removes their tags.
-   */
   @ManyToOne(() => User, (user) => user.tags, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  @Field(() => User, { nullable: true })
+  user?: User;
 
-  /**
-   * Many-to-many link table mapping this tag to clothing items.
-   * Managed through the intermediate `clothing_item_tags` relation.
-   */
-  @OneToMany(() => ClothingItemTag, (cit) => cit.tag)
+  @OneToMany(() => ClothingItemTag, (clothingItemTag) => clothingItemTag.tag)
   clothing_item_tags: ClothingItemTag[];
 
-  /** Timestamp when the tag was first created. */
+  @OneToMany(() => OutfitItem, (outfitItem) => outfitItem.item)
+  outfit_items: OutfitItem[];
+
+  @OneToMany(() => Outfit, (outfit) => outfit.outfit_items)
+  outfits: Outfit[];
+
+  @OneToMany(() => Comment, (comment) => comment.outfit)
+  comments: Comment[];
+
+  @OneToMany(() => Like, (like) => like.outfit)
+  likes: Like[];
+
   @CreateDateColumn()
+  @Field()
   created_at: Date;
 
-  /** Timestamp when the tag was last updated. */
   @UpdateDateColumn()
+  @Field()
   updated_at: Date;
 }
-
-/**
- * Postconditions:
- * - Tags can be safely deleted when the owning user is removed (cascade).
- * - Maintains a bidirectional link with `ClothingItemTag` for wardrobe categorization.
- */

@@ -1,4 +1,10 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateOutfitItemDto } from './create-outfit-item.dto';
+import { Field, InputType, Int, PartialType } from '@nestjs/graphql';
+import { CreateOutfitItemInput } from './create-outfit-item.dto';
+import { IsInt } from 'class-validator';
 
-export class UpdateOutfitItemDto extends PartialType(CreateOutfitItemDto) {}
+@InputType()
+export class UpdateOutfitItemInput extends PartialType(CreateOutfitItemInput) {
+  @Field(() => Int)
+  @IsInt()
+  outfit_item_id: number;
+}
