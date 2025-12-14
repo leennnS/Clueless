@@ -38,9 +38,7 @@ virtual_closet/
 ├── backend/                # NestJS GraphQL API + PostgreSQL access layer
 ├── frontend/               # React + Vite single-page app
 ├── docs/                   # Long-form documentation (this file)
-├── .env.example            # Shared configuration template
-├── check_items.py          # Utility script for CLI wardrobe checks
-└── query_outfit_items.py   # Utility script demonstrating outfit queries
+└── .env.example            # Shared configuration template
 ```
 
 ### 1.2 Prerequisites
